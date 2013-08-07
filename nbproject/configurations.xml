@@ -2,6 +2,44 @@
 <configurationDescriptor version="84">
   <logicalFolder name="root" displayName="root" projectFiles="true" kind="ROOT">
     <df name="forecastOpt" root=".">
+      <df name=".git">
+        <df name="logs">
+        </df>
+      </df>
+      <df name="include">
+        <in>albedoDb.h</in>
+        <in>auxData.h</in>
+        <in>carp.h</in>
+        <in>directModel.h</in>
+        <in>endain.h</in>
+        <in>f2c.h</in>
+        <in>gridDateTime.h</in>
+        <in>gridded.h</in>
+        <in>ioUtils.h</in>
+        <in>irModel.h</in>
+        <in>local_math.h</in>
+        <in>satDirect.h</in>
+        <in>satFileGen.h</in>
+        <in>satModel.h</in>
+        <in>satRank.h</in>
+        <in>satUtils.h</in>
+        <in>sunae.h</in>
+        <in>timeUtils.h</in>
+      </df>
+      <df name="satLib">
+        <in>Makefile.satLib</in>
+        <in>auxData.c</in>
+        <in>gridDateTime.c</in>
+        <in>gridded.c</in>
+        <in>ioUtils.c</in>
+        <in>satDefaults.c</in>
+        <in>satFileGen.c</in>
+        <in>satSql.c</in>
+        <in>satUtils.c</in>
+        <in>snowAlg.c</in>
+        <in>sunae.c</in>
+        <in>timeUtils.c</in>
+      </df>
       <in>errorAnalysis.c</in>
       <in>forecastOpt.c</in>
       <in>forecastOpt.h</in>

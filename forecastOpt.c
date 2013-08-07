@@ -172,7 +172,7 @@ int readForecastFile(forecastInputType *fci, char *fileName)
         //fgets(line, LineLength, fp);
         
         incrementTimeSeries(fci);
-        thisSample = &(fci->timeSeries[fci->numSamples - 1]);
+        thisSample = &(fci->timeSeries[fci->numTotalSamples - 1]);
         
         numFields = split(line, fields, MAX_FIELDS, Delimiter);  /* split line */  
         if(numFields < 100) {
@@ -308,7 +308,7 @@ int readDataFromLine(forecastInputType *fci, char *fields[])
     11 sr_rh
     */
     static char firstTime = True;
-    timeSeriesType *thisSample = &(fci->timeSeries[fci->numSamples - 1]);  
+    timeSeriesType *thisSample = &(fci->timeSeries[fci->numTotalSamples - 1]);  
     
     thisSample->isValid = True;
     
@@ -463,7 +463,7 @@ void initForecast(forecastInputType *fci)
     fci->siteGroup = NULL;
     fci->siteName = NULL;
     fci->numModels = 0;
-    fci->numSamples = 0;
+    fci->numTotalSamples = 0;
     allocatedSamples = 8670 * MAX_MODELS;
     fci->timeSeries = (timeSeriesType *) malloc(allocatedSamples * sizeof(timeSeriesType));
     fci->numValidSamples = 0;
@@ -474,8 +474,8 @@ void initForecast(forecastInputType *fci)
 
 void incrementTimeSeries(forecastInputType *fci)
 {
-    fci->numSamples++;
-    if(fci->numSamples == allocatedSamples) {
+    fci->numTotalSamples++;
+    if(fci->numTotalSamples == allocatedSamples) {
         allocatedSamples *= 2;
         fci->timeSeries = (timeSeriesType *) realloc(fci->timeSeries, allocatedSamples * sizeof(timeSeriesType));
     }

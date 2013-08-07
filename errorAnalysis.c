@@ -38,7 +38,7 @@ int doErrorAnalysis(forecastInputType *fci)
             fci->meanMeasuredGHI = 0;
     }
     
-    for(sampleInd=0; sampleInd < fci->numSamples; sampleInd++) {
+    for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
         thisSample = &fci->timeSeries[sampleInd];
         if(thisSample->isValid) {
 #ifdef DEBUG

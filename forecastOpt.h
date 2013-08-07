@@ -51,7 +51,7 @@ typedef struct {
     int numReadColumns;
     int numModels;
     modelType models[MAX_MODELS];
-    int numSamples;
+    int numTotalSamples;
     int numValidSamples;
     double meanMeasuredGHI;
     timeSeriesType *timeSeries;
