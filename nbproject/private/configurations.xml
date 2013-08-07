@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configurationDescriptor version="84">
+  <projectmakefile>Makefile</projectmakefile>
+  <confs>
+    <conf name="adk2" type="0">
+      <toolsSet>
+        <developmentServer>jim@adk2.asrc.cestm.albany.edu:22</developmentServer>
+        <platform>2</platform>
+      </toolsSet>
+      <dbx_gdbdebugger version="1">
+        <gdb_pathmaps>
+        </gdb_pathmaps>
+        <gdb_interceptlist>
+          <gdbinterceptoptions gdb_all="false" gdb_unhandled="true" gdb_unexpected="true"/>
+        </gdb_interceptlist>
+        <gdb_options>
+          <DebugOptions>
+          </DebugOptions>
+        </gdb_options>
+        <gdb_buildfirst gdb_buildfirst_overriden="false" gdb_buildfirst_old="false"/>
+      </dbx_gdbdebugger>
+      <nativedebugger version="1">
+        <engine>gdb</engine>
+      </nativedebugger>
+      <runprofile version="9">
+        <runcommandpicklist>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" /home/jim/mom/template-new_forecast_test.csv
+</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" /home/jim/mom/template-new_forecast_test.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 /home/jim/mom/forecast.desert_rock.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -o desertRock.out  /home/jim/mom/forecast.desert_rock.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -o /home/jim/mom/desertRock.out  /home/jim/mom/forecast.desert_rock.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -o /home/jim/mom/desertRock.csv  /home/jim/mom/forecast.desert_rock.csv >&amp; modelOutput.txt</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -o /home/jim/mom/desertRock.csv  /home/jim/mom/test-data-4-jim-desert-rock.csv >&amp; modelOutput.txt</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -o /home/jim/mom/desertRock.csv  /home/jim/mom/test-data-4-jim-desert-rock.csv </runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -c -s 2 -o /home/jim/mom/desertRock.csv  /home/jim/mom/test-data-4-jim-desert-rock.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -c -s 2 -o /home/jim/mom/desertRock.csv  /home/jim/mom/test-data-4-jim-desert-rock.2.csv</runcommandpicklistitem>
+        </runcommandpicklist>
+        <runcommand>"${OUTPUT_PATH}" -c -s 2 -o /home/jim/mom/desertRock.csv  /home/jim/mom/test-data-4-jim-desert-rock.2.csv</runcommand>
+        <rundir>.</rundir>
+        <buildfirst>true</buildfirst>
+        <terminal-type>0</terminal-type>
+        <remove-instrumentation>0</remove-instrumentation>
+        <environment>
+        </environment>
+      </runprofile>
+    </conf>
+  </confs>
+</configurationDescriptor>
