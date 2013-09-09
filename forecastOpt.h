@@ -8,6 +8,7 @@
 #ifndef FORECASTOPT_H
 #define	FORECASTOPT_H
 
+#include <math.h>
 #include "gridDateTime.h"
 #ifdef	__cplusplus
 extern "C" {
@@ -18,50 +19,75 @@ extern "C" {
 #endif
 
 #define MAX_MODELS 16
+#define MAX_HOURLY_SLOTS 64
+#define MIN_GHI_VAL 5
 
 typedef enum { MKunset, regular } modelKindType;
 
 typedef struct {
+    int columnInfoIndex;
+    char *columnName;  // short cut to columnName below
     double sumModel_Ground, sumAbs_Model_Ground, sumModel_Ground_2;
     double mbe, mae, rmse; 
     double mbePct, maePct, rmsePct;
+    double weight;
+    int N;
+    int isActive;
+    int powerOfTen;
+} modelStatsType;
+
+typedef struct {
+    int hoursAhead;
+    int numValidSamples;
+    int ground_N;
+    double meanMeasuredGHI;
+    modelStatsType satModelError;
+    modelStatsType modelError[MAX_MODELS];
 } modelErrorType;
 
 typedef struct {
-    char *modelName;
-    modelKindType modelKind;
-    modelErrorType modelError;
-} modelType;
+    double modelGHI[MAX_MODELS];
+} hourGroupType;
 
 typedef struct {
     dateTimeType dateTime;
-    char   isValid;
-    double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH;   // this is the ground data
-    double modelGHIvalues[MAX_MODELS];
+    double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI;   // this is the ground data
+    hourGroupType hourGroup[MAX_HOURLY_SLOTS];
+    int isValid;
 } timeSeriesType;
 
 typedef struct {
     char *columnName;
     char *columnDescription;
     int  inputColumnNumber;
+    int  maxHourAhead;
+    int  hourGroupIndex;
+    int  modelIndex;
 } columnType;
 
 typedef struct {
-    columnType readColumns[64];
-    int numReadColumns;
+    columnType columnInfo[MAX_MODELS * MAX_HOURLY_SLOTS];
+    modelErrorType hourErrorGroup[MAX_HOURLY_SLOTS];
+    int numColumnInfoEntries;
     int numModels;
-    modelType models[MAX_MODELS];
+    int numHourGroups;
     int numTotalSamples;
-    int numValidSamples;
-    double meanMeasuredGHI;
     timeSeriesType *timeSeries;
     char *siteGroup;
     char *siteName;
+    char *outputDirectory;
     double lat, lon;
     int zenithCol, groundGHICol, groundDNICol, groundDiffuseCol, groundTempCol, groundWindCol, satGHICol, clearskyGHICol, startModelsColumnNumber;
+    dateTimeType startDate, endDate;
 } forecastInputType;
 
-int doErrorAnalysis(forecastInputType *fci);
+int doErrorAnalysis(forecastInputType *fci, int hourIndex);
+char *getGenericModelName(forecastInputType *fci, int modelIndex);
+int getMaxHoursAhead(forecastInputType *fci, int modelIndex);
+void runOptimizer(forecastInputType *fci, int hourIndex);
+int filterHourlyModelData(forecastInputType *fci, int hourIndex);
+void clearHourlyErrorFields(forecastInputType *fci, int hourIndex);
+int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
 
 #endif	/* FORECASTOPT_H */
 

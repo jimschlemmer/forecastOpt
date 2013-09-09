@@ -11,7 +11,7 @@ INC	= -I./${INCLUDEDIR} # -I./include -I/usr/include
 #CFLAGS = -g -rdynamic -Wall -DNSUNAEDUMP -DSQL_DEBUG -DNALBEDOBOUNDS -DNALBEDOLIST_DEBUG -DNDUMP_NORM_PIXL -DNGRID_WRITE_HEAD_CHECK ${INC} 
 CFLAGS = -g -rdynamic -Wall ${INC} 
 LIBS	= -lm -ldbi -ldl
-OBJS	= forecastOpt.o errorAnalysis.o
+OBJS	= forecastOpt.o errorAnalysis.o optimizer.o
 
 .c.o:
 	${CC} ${CFLAGS} -c $*.c

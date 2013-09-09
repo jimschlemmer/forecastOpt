@@ -24,19 +24,20 @@
       </nativedebugger>
       <runprofile version="9">
         <runcommandpicklist>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" /home/jim/mom/template-new_forecast_test.csv
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013072200 -o goodwinCreek.csv /home/ftp/incoming/forecast.goodwin_creek.csv >&amp; goodwinCreekOutput.txt</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013072200 -o goodwinCreek.csv /home/ftp/incoming/forecast.goodwin_creek.csv </runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013072200 -o goodwinCreek.csv /home/ftp/incoming/forecast.goodwin_creek.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013082000 -o /home/ftp/pub/tmp/forecastOpt/output /home/ftp/pub/tmp/forec
+astOpt/inputCsvs/forecast.goodwinCreek.csv
 </runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" /home/jim/mom/template-new_forecast_test.csv</runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 /home/jim/mom/forecast.desert_rock.csv</runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -o desertRock.out  /home/jim/mom/forecast.desert_rock.csv</runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -o /home/jim/mom/desertRock.out  /home/jim/mom/forecast.desert_rock.csv</runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -o /home/jim/mom/desertRock.csv  /home/jim/mom/forecast.desert_rock.csv >&amp; modelOutput.txt</runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -o /home/jim/mom/desertRock.csv  /home/jim/mom/test-data-4-jim-desert-rock.csv >&amp; modelOutput.txt</runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -o /home/jim/mom/desertRock.csv  /home/jim/mom/test-data-4-jim-desert-rock.csv </runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" -c -s 2 -o /home/jim/mom/desertRock.csv  /home/jim/mom/test-data-4-jim-desert-rock.csv</runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" -c -s 2 -o /home/jim/mom/desertRock.csv  /home/jim/mom/test-data-4-jim-desert-rock.2.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013082000 -o /home/ftp/pub/tmp/forecastOpt/output /home/ftp/pub/tmp/forec astOpt/inputCsvs/forecast.goodwinCreek.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013082000 -o /home/ftp/pub/tmp/forecastOpt/output /home/ftp/pub/tmp/forecastOpt/inputCsvs/forecast.goodwinCreek.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013082000 -o /home/ftp/pub/tmp/forecastOpt/output /home/ftp/pub/tmp/forecastOpt/inputCsvs/forecast.goodwin_creek.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013082000 -o /home/ftp/pub/tmp/forecastOpt/output /home/ftp/pub/tmp/forecastOpt/inputCsvs/forecast.fort_peck.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013082000 -o /home/ftp/pub/tmp/forecastOpt/output /home/ftp/pub/tmp/forecastOpt/inputCsvs/forecast.desert_rock.csv</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013082000 -o /home/ftp/pub/tmp/forecastOpt/output /home/ftp/pub/tmp/forecastOpt/inputCsvs/forecast.hanford.csv</runcommandpicklistitem>
         </runcommandpicklist>
-        <runcommand>"${OUTPUT_PATH}" -c -s 2 -o /home/jim/mom/desertRock.csv  /home/jim/mom/test-data-4-jim-desert-rock.2.csv</runcommand>
+        <runcommand>"${OUTPUT_PATH}" -t -s 1 -a 2013062200,2013082000 -o /home/ftp/pub/tmp/forecastOpt/output /home/ftp/pub/tmp/forecastOpt/inputCsvs/forecast.hanford.csv</runcommand>
         <rundir>.</rundir>
         <buildfirst>true</buildfirst>
         <terminal-type>0</terminal-type>

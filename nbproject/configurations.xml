@@ -2,10 +2,6 @@
 <configurationDescriptor version="84">
   <logicalFolder name="root" displayName="root" projectFiles="true" kind="ROOT">
     <df name="forecastOpt" root=".">
-      <df name=".git">
-        <df name="logs">
-        </df>
-      </df>
       <df name="include">
         <in>albedoDb.h</in>
         <in>auxData.h</in>
@@ -27,7 +23,6 @@
         <in>timeUtils.h</in>
       </df>
       <df name="satLib">
-        <in>Makefile.satLib</in>
         <in>auxData.c</in>
         <in>gridDateTime.c</in>
         <in>gridded.c</in>
@@ -43,6 +38,7 @@
       <in>errorAnalysis.c</in>
       <in>forecastOpt.c</in>
       <in>forecastOpt.h</in>
+      <in>optimizer.c</in>
     </df>
     <df name="include" root="../satModel/v3/include">
       <in>albedoDb.h</in>
