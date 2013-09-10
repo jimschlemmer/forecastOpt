@@ -1,0 +1,25 @@
+#CC     = gcc -Wall
+CC      = gcc
+#CC     = cc 
+INC     = -I./../include # -I./include -I/usr/include 
+#CFLAGS = -O3 -march=nocona -DSQL_DEBUG -DNPIXRECDUMP -DNSNOW_DEBUG -DNALBEDOBOUNDS -DNALBEDOLIST_DEBUG -DNDUMP_NORM_PIXL -DNGRID_WRITE_HEAD_CHECK ${INC} 
+#CFLAGS = -g -Wall -DNSUNAEDUMP -DSQL_DEBUG -DNPIXRECDUMP -DNSNOW_DEBUG -DNALBEDOBOUNDS -DNALBEDOLIST_DEBUG -DNSNOW_DEBUG -DNDUMP_NORM_PIXL -DNGRID_WRITE_HEAD_CHECK ${INC}
+CFLAGS = -g -Wall ${INC}
+
+LIBDIR  = ./satLib
+SATLIB  = satLib.a
+LIBOBJS = gridded.o sunae.o ioUtils.o timeUtils.o gridDateTime.o 
+
+.c.o:
+	${CC} ${CFLAGS} -c $*.c
+
+${SATLIB}: ${LIBOBJS}
+	ar rv ${SATLIB} ${LIBOBJS}
+
+clean:
+	rm -f ${LIBOBJS} ${SATLIB}
+
+#install:
+#       make ${LIBSRC}
+#       cp -p ${LIBSRC} ${LLIBDIR}
+

@@ -660,8 +660,8 @@ void runErrorAnalysis(forecastInputType *fci)
     int hourIndex;
     
     for(hourIndex=0; hourIndex < fci->numHourGroups; hourIndex++) {
-        doErrorAnalysis(fci, hourIndex);
-        //runOptimizer(fci, hourIndex);
+        //doErrorAnalysis(fci, hourIndex);
+        runOptimizer(fci, hourIndex);
     }
 
 //    printByHour(fci);

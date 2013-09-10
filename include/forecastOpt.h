@@ -43,6 +43,7 @@ typedef struct {
     double meanMeasuredGHI;
     modelStatsType satModelError;
     modelStatsType modelError[MAX_MODELS];
+    modelStatsType weightedModelError;
 } modelErrorType;
 
 typedef struct {
@@ -51,7 +52,7 @@ typedef struct {
 
 typedef struct {
     dateTimeType dateTime;
-    double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI;   // this is the ground data
+    double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, weightedModelGHI;   // this is the ground data
     hourGroupType hourGroup[MAX_HOURLY_SLOTS];
     int isValid;
 } timeSeriesType;
@@ -88,6 +89,9 @@ void runOptimizer(forecastInputType *fci, int hourIndex);
 int filterHourlyModelData(forecastInputType *fci, int hourIndex);
 void clearHourlyErrorFields(forecastInputType *fci, int hourIndex);
 int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
+int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex);
+int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex);
+int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex);
 
 #endif	/* FORECASTOPT_H */
 
