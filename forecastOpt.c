@@ -31,7 +31,6 @@ char *getColumnNameByHourModel(forecastInputType *fci, int hrInd, int modInd);
 FILE *openErrorTypeFile(forecastInputType *fci, char *analysisType);
 
 
-
 char *Progname, *OutputDirectory, Verbose=0;
 FILE *FilteredDataFp;
 char *fileName;
@@ -143,8 +142,7 @@ int readForecastFile(forecastInputType *fci, char *fileName)
     int numFields;
     double lat, lon;
     char *fields[MAX_FIELDS], *fldPtr;
-    dateTimeType currDate;
-    
+    dateTimeType currDate;    
     timeSeriesType *thisSample;
     
     if((fp = fopen(fileName, "r")) == NULL) {
@@ -195,9 +193,9 @@ int readForecastFile(forecastInputType *fci, char *fileName)
             continue;
         
         incrementTimeSeries(fci);
+        thisSample = &(fci->timeSeries[fci->numTotalSamples - 1]);  // switched these two lines
         thisSample->dateTime = currDate;
-        thisSample = &(fci->timeSeries[fci->numTotalSamples - 1]);
-        
+
         // siteGroup
         fldPtr = fields[0];
         if(fci->siteGroup == NULL) {
@@ -946,3 +944,21 @@ int parseDates(forecastInputType *fci, char *optarg)
     return True;
 }
         
+
+//
+// Print message and exit with exit code = 1
+//
+void fatalError(char *functName, char *errStr, char *file, int linenumber)
+{
+    int exitCode = 1;
+    fatalErrorWithExitCode(functName, errStr, file, linenumber, exitCode);
+}
+
+//
+// Print message and exit with specific exitCode
+//
+void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode)
+{
+    fprintf(stderr, "FATAL: %s: %s in %s at line %d\n", functName, errStr, file, linenumber);
+    exit(exitCode);
+}

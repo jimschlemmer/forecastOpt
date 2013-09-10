@@ -9,7 +9,8 @@ INC	= -I./${INCLUDEDIR} # -I./include -I/usr/include
 #CC	= cc 
 #CFLAGS = -O3 -march=nocona -DSQL_DEBUG -DNSNOW_DEBUG -DNALBEDOBOUNDS -DNALBEDOLIST_DEBUG -DNDUMP_NORM_PIXL -D NGRID_WRITE_HEAD_CHECK ${INC} 
 #CFLAGS = -g -rdynamic -Wall -DNSUNAEDUMP -DSQL_DEBUG -DNALBEDOBOUNDS -DNALBEDOLIST_DEBUG -DNDUMP_NORM_PIXL -DNGRID_WRITE_HEAD_CHECK ${INC} 
-CFLAGS = -g -rdynamic -Wall ${INC} 
+#CFLAGS = -g -rdynamic -Wall ${INC} 
+CFLAGS = -O3 -Wall ${INC} 
 LIBS	= -lm -ldbi -ldl
 OBJS	= forecastOpt.o errorAnalysis.o optimizer.o
 

@@ -18,6 +18,8 @@ extern "C" {
 }
 #endif
 
+#define FatalError(function, message) fatalError(function, message, __FILE__, __LINE__)
+
 #define MAX_MODELS 16
 #define MAX_HOURLY_SLOTS 64
 #define MIN_GHI_VAL 5
@@ -92,6 +94,8 @@ int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
 int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex);
 int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex);
 int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex);
+void fatalError(char *functName, char *errStr, char *file, int linenumber);
+void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);
 
 #endif	/* FORECASTOPT_H */
 

@@ -58,10 +58,10 @@ void runOptimizer(forecastInputType *fci, int hourIndex)
         if(hourGroup->weightedModelError.rmsePct < minRmse) {
             minRmse = hourGroup->weightedModelError.rmsePct;
         
-            fprintf(stderr, "[%ld] Found new low RMSE weight selection: RMSE=%.1f%% wts=[", counter, minRmse);
+            fprintf(stderr, "[%ld] Found new low RMSE weight selection: RMSE=%.1f%% wts=", counter, minRmse);
             for(i=0; i < fci->numModels; i++) {
                 if(hourGroup->modelError[i].isActive) {
-                    fprintf(stderr, "%.2f,", hourGroup->modelError[i].weight);
+                    fprintf(stderr, "%.0f ", hourGroup->modelError[i].weight * 10);
                 }
             }
             fprintf(stderr, "\n");        
