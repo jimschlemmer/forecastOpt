@@ -8,7 +8,7 @@ CFLAGS = -g -Wall ${INC}
 
 LIBDIR  = ./satLib
 SATLIB  = satLib.a
-LIBOBJS = gridded.o sunae.o ioUtils.o timeUtils.o gridDateTime.o satUtils.o
+LIBOBJS = sunae.o ioUtils.o timeUtils.o gridDateTime.o 
 
 .c.o:
 	${CC} ${CFLAGS} -c $*.c

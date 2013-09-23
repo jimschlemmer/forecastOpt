@@ -1,5 +1,4 @@
 #include "forecastOpt.h"
-#include "satModel.h"
 
 /*
 STEP 2  Error calculation
@@ -21,7 +20,6 @@ STEP 2  Error calculation
 // it's not a forecast entity.
 #define getModelGHI(modelIndex) (modelIndex < 0 ? thisSample->satGHI : thisSample->hourGroup[hourIndex].modelGHI[modelIndex])
 #define incrementModelN(modelIndex) (modelIndex < 0 ? (hourGroup->satModelError.N++) : (hourGroup->modelError[modelIndex].N++))
-#define getModelN(modelIndex) (modelIndex < 0 ? (hourGroup->satModelError.N) : (hourGroup->modelError[modelIndex].N))
 
 #define DEBUGHOUR 1
 
@@ -68,7 +66,7 @@ void clearModelStats(modelStatsType *thisModelErr)
 }
 
 
-
+#define WRITE_FILTERED_DATA
 int filterHourlyModelData(forecastInputType *fci, int hourIndex)
 {
     int sampleInd, modelIndex;
@@ -132,14 +130,6 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
         }
     }
     
-    fprintf(stderr, "\nHR%d=== Summary for hour %d (number of good samples) ===\n", hoursAhead, hoursAhead);
-    fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "N for group", hourGroup->numValidSamples);
-    fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "ground GHI", hourGroup->ground_N);
-    for(modelIndex=-1; modelIndex < fci->numModels; modelIndex++) {
-        if(modelIndex < 0 || hourGroup->modelError[modelIndex].isActive)
-            fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, getGenericModelName(fci, modelIndex), getModelN(modelIndex));
-    }
-    
     if(hourGroup->numValidSamples < 1) {
         fprintf(stderr, "doErrorAnalysis(): for hour index %d (%d hours ahead): got too few valid points to work with\n", hourIndex, hourGroup->hoursAhead);
         //FatalError("doErrorAnalysis()", "Too few valid data points to work with.");
@@ -180,6 +170,38 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
             fprintf(stderr, "\n");
         }
     }
+#endif
+    
+#ifdef WRITE_FILTERED_DATA
+    FILE *fp;
+    char filename[1024];
+    // open the file
+    sprintf(filename, "%s.filteredData.hourAhead=%d.csv", fci->siteName, hoursAhead);
+    if((fp = fopen(filename, "w")) == NULL) {
+        fprintf(stderr, "Couldn't open file %s\n", filename);
+        exit(1);
+    }
+    // print the header
+    fprintf(fp, "#year,month,day,hour,min,groupIsValid,groundGHI,satGHI");
+    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+        if(hourGroup->modelError[modelIndex].isActive) {
+            fprintf(fp, ",%s", getGenericModelName(fci, modelIndex));
+        }
+    }
+    fprintf(fp, "\n");
+    // print the data
+    for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
+            thisSample = &fci->timeSeries[sampleInd];
+            fprintf(fp, "%s,%d,%s,%.0f,%.0f", dtToStringCsv2(&thisSample->dateTime), sampleInd, thisSample->isValid ? "yes" : "no", 
+                    thisSample->groundGHI , thisSample->satGHI );
+            for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+                if(hourGroup->modelError[modelIndex].isActive) {
+                    fprintf(fp, ",%.0f", thisSample->hourGroup[hourIndex].modelGHI[modelIndex]);                    
+                }
+            } 
+            fprintf(fp, "\n");
+    }
+    fclose(fp);
 #endif
     
     hourGroup->meanMeasuredGHI /= hourGroup->numValidSamples;

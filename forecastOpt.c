@@ -2,7 +2,6 @@
  Forecast Optimizer.
  */
 
-#include "satModel.h"
 #include "forecastOpt.h"
 
 #define VERSION "1.0"
@@ -29,9 +28,11 @@ void printByModel(forecastInputType *fci);
 void printByAnalysisType(forecastInputType *fci);
 char *getColumnNameByHourModel(forecastInputType *fci, int hrInd, int modInd);
 FILE *openErrorTypeFile(forecastInputType *fci, char *analysisType);
+void printRmseTableHour(forecastInputType *fci, int hourIndex);
+FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int hourIndex);
 
 
-char *Progname, *OutputDirectory, Verbose=0;
+char *Progname, *OutputDirectory;
 FILE *FilteredDataFp;
 char *fileName;
 char ErrStr[4096];
@@ -41,7 +42,7 @@ char *Delimiter;
 int main(int argc,char **argv)
 {
     forecastInputType fci;
-    signal(SIGSEGV, segvhandler); // catch memory reference errors
+    //signal(SIGSEGV, segvhandler); // catch memory reference errors
 
     Progname = basename(argv[0]);  // strip out path
   
@@ -66,11 +67,16 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     fci->startDate.year = -1;
     fci->endDate.year = -1;
     fci->outputDirectory = "./";
+    fci->verbose = False;
+    fci->weightSumLowCutoff = 0.95;
+    fci->weightSumHighCutoff = 1.05;
+    fci->startHourLowIndex = -1;
+    fci->startHourHighIndex = -1;
     
     //static char tabDel[32];
     //sprintf(tabDel, "%c", 9);  // ascii 9 = TAB
     
-    while ((c=getopt(argC, argV, "a:cto:s:HhvV")) != EOF) {
+    while ((c=getopt(argC, argV, "a:cto:s:HhvVl:u:")) != EOF) {
         switch (c) {
             case 'c': { Delimiter = ",";
                         break; }
@@ -86,10 +92,14 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
             case 't': { Delimiter = "\t";
                         break; }
 
-            case 'v': Verbose = True;
-                      break;
-            case 'h': 
-            case 'H': help();
+            case 'v': { fci->verbose = True;
+                        break; }
+            case 'l': { fci->startHourLowIndex = atoi(optarg);
+                        break; }
+            case 'u': { fci->startHourHighIndex = atoi(optarg);
+                        break; }
+                 
+            case 'h': help();
                       return(False);
             case 'V': version();
                       return(False);
@@ -111,7 +121,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
 void help(void) 
 {
     version();
-    printf( "usage: %s forecastFile\n", Progname);
+    printf( "usage: %s [-cthvV] [-a begin,end] [-o output] [-l lowWeightSum] [-u upperWeightSum] forecastFile\n", Progname);
     printf( "where: forecastFile = .csv forecast file\n");
 }
 
@@ -124,11 +134,21 @@ void version(void)
 
 
 void processForecast(forecastInputType *fci, char *fileName)
-{    
+{        
+    time_t start;
+    
+    start = time(NULL);
+    fprintf(stderr, "=== Starting processing at %s\n", timeOfDayStr());
+    fprintf(stderr, "=== Using date range: %s to ", dtToStringDateTime(&fci->startDate));
+    fprintf(stderr, "%s\n", dtToStringDateTime(&fci->endDate));
+    fprintf(stderr, "=== Weight Sum Range: %.2f to %.2f\n\n", fci->weightSumLowCutoff, fci->weightSumHighCutoff);
+
     initForecast(fci);
     readForecastFile(fci, fileName);
     runErrorAnalysis(fci);
      
+    fprintf(stderr, "=== Ending at %s\n", timeOfDayStr());
+    fprintf(stderr, "=== Elapsed time: %s\n", getElapsedTime(start));
     return;
 }
 
@@ -308,7 +328,7 @@ int parseDateTime(forecastInputType *fci, dateTimeType *dt, char *dateTimeStr)
     if(!dateTimeSanityCheck(dt))
         FatalError("parseDateTime()", "Bad date/time string");
     
-    // finally, do a range check
+    // finally, do a check to see if we're within the -a start,end range
     if(fci->startDate.year > 1900) {
         return(dt->obs_time >= fci->startDate.obs_time && dt->obs_time <= fci->endDate.obs_time);
     }
@@ -657,9 +677,15 @@ void runErrorAnalysis(forecastInputType *fci)
 {
     int hourIndex;
     
-    for(hourIndex=0; hourIndex < fci->numHourGroups; hourIndex++) {
-        //doErrorAnalysis(fci, hourIndex);
-        runOptimizer(fci, hourIndex);
+    for(hourIndex=fci->startHourLowIndex; hourIndex <= fci->startHourHighIndex; hourIndex++) {
+        fprintf(stderr, "\n############ Running for hour ahead %d\n\n", fci->hourErrorGroup[hourIndex].hoursAhead);
+        doErrorAnalysis(fci, hourIndex);
+        printRmseTableHour(fci, hourIndex);
+        printHourlySummary(fci, hourIndex);
+        //runOptimizer(fci, hourIndex);
+        runOptimizerNested(fci, hourIndex);
+        fprintf(stderr, "\n############ End hour ahead %d\n", fci->hourErrorGroup[hourIndex].hoursAhead);
+
     }
 
 //    printByHour(fci);
@@ -771,6 +797,65 @@ void printByAnalysisType(forecastInputType *fci)
         fprintf(fp, "\n");
     }    
     fclose(fp);   
+}
+
+void printRmseTableHour(forecastInputType *fci, int hourIndex)
+{
+    FILE *fp;   
+    int modelIndex;
+    modelErrorType *hourGroup = &fci->hourErrorGroup[hourIndex];
+    
+    if(!(fp = openErrorTypeFileHourly(fci, "RMSE", hourIndex)))
+       return;
+    //fp = stderr;
+    
+    //for(hourIndex=0; hourIndex < fci->numHourGroups; hourIndex++) {
+        fprintf(fp, "hours ahead = %d\nN = %d\n", hourGroup->hoursAhead, hourGroup->numValidSamples);
+        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {          
+            if(hourGroup->modelError[modelIndex].isActive)
+                fprintf(fp, "%-35s = %.1f%%\n", getGenericModelName(fci, modelIndex), hourGroup->modelError[modelIndex].rmsePct*100);
+        }
+        fprintf(fp, "\n");
+    //}    
+    //fclose(fp);   
+}
+
+FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int hourIndex)
+{
+    char fileName[1024];
+    static FILE *fp;
+//    int modelIndex;
+    char satGHIerr[1024];
+//    modelErrorType *hourGroup = &fci->hourErrorGroup[hourIndex];
+    
+    if(fci->outputDirectory == NULL || fci->siteName == NULL) {
+        fprintf(stderr, "openErrorTypeFile(): got null outputDirectory or siteName\n");
+        return NULL;
+    }
+    
+    if(strcasecmp(analysisType, "rmse") == 0)
+        sprintf(satGHIerr, "sat GHI RMSE=%.1f%%", fci->hourErrorGroup[hourIndex].satModelError.rmsePct * 100);
+    else if(strcasecmp(analysisType, "mae") == 0)
+        sprintf(satGHIerr, "sat GHI MAE=%.1f%%", fci->hourErrorGroup[hourIndex].satModelError.maePct * 100);
+    else 
+        sprintf(satGHIerr, "sat GHI MBE=%.1f%%", fci->hourErrorGroup[hourIndex].satModelError.mbePct * 100);
+
+    
+    sprintf(fileName, "%s/%s.forecast.analysisType=%s.csv", fci->outputDirectory, fci->siteName, analysisType);
+    //fp = fopen(fileName, "w");
+    fp = stderr;
+    
+    fprintf(fp, "siteName=%s\nlat=%.2f\nlon=%.3f\nanalysisType=%s\n%s\n",fci->siteName, fci->lat, fci->lon, analysisType, satGHIerr);
+/*
+    fprintf(fp, "hours ahead,N,");
+    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++)  {
+        if(hourGroup->modelError[modelIndex].isActive)
+            fprintf(fp, "%s,", getGenericModelName(fci, modelIndex));
+    }
+    fprintf(fp, "\n");
+*/
+    
+    return fp;
 }
 
 FILE *openErrorTypeFile(forecastInputType *fci, char *analysisType)
@@ -888,6 +973,10 @@ void getNumberOfHoursAhead(forecastInputType *fci, char *origLine)
         FatalError("getNumberOfHoursAhead()", "problem getting number of hours ahead");
     }
     
+    if(fci->startHourLowIndex == -1) {
+        fci->startHourLowIndex = 0;
+        fci->startHourHighIndex = fci->numHourGroups;
+    }
     //free(copyLine);
 }
 
@@ -929,7 +1018,7 @@ int parseDates(forecastInputType *fci, char *optarg)
     setObsTime(start);  // calculate time_t and doy numbers
 
     if(!dateTimeSanityCheck(start)) {
-        fprintf(stderr, "parseDates(): error in archiver start date %s in argument string %s\n", startStr, backup);
+        fprintf(stderr, "parseDates(): error in start date %s in argument string %s\n", startStr, backup);
         return(False);
     }
     
@@ -937,10 +1026,10 @@ int parseDates(forecastInputType *fci, char *optarg)
     setObsTime(end);
 
     if(!dateTimeSanityCheck(end)) {
-        fprintf(stderr, "parseDates(): error in archiver end date %s in argument string %s\n", endStr, backup);
+        fprintf(stderr, "parseDates(): error in end date %s in argument string %s\n", endStr, backup);
         return(False);
     }
-        
+            
     return True;
 }
         
@@ -962,3 +1051,20 @@ void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linen
     fprintf(stderr, "FATAL: %s: %s in %s at line %d\n", functName, errStr, file, linenumber);
     exit(exitCode);
 }
+
+#define getModelN(modelIndex) (modelIndex < 0 ? (hourGroup->satModelError.N) : (hourGroup->modelError[modelIndex].N))
+
+void printHourlySummary(forecastInputType *fci, int hourIndex)
+{
+    int modelIndex, hoursAhead = fci->hourErrorGroup[hourIndex].hoursAhead;
+    modelErrorType *hourGroup = &fci->hourErrorGroup[hourIndex];
+    
+    fprintf(stderr, "\nHR%d=== Summary for hour %d (number of good samples) ===\n", hoursAhead, hoursAhead);
+    fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "N for group", hourGroup->numValidSamples);
+    fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "ground GHI", hourGroup->ground_N);
+    for(modelIndex=-1; modelIndex < fci->numModels; modelIndex++) {
+        if(modelIndex < 0 || hourGroup->modelError[modelIndex].isActive)
+            fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, getGenericModelName(fci, modelIndex), getModelN(modelIndex));
+    }
+}
+    

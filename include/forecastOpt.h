@@ -8,8 +8,24 @@
 #ifndef FORECASTOPT_H
 #define	FORECASTOPT_H
 
+#include <time.h>
+#include <malloc.h>
 #include <math.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <string.h>
+#include <libgen.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dbi/dbi.h>
+#include <errno.h>
+
 #include "gridDateTime.h"
+#include "ioUtils.h"
+#include "timeUtils.h"
+
 #ifdef	__cplusplus
 extern "C" {
 #endif
@@ -32,10 +48,12 @@ typedef struct {
     double sumModel_Ground, sumAbs_Model_Ground, sumModel_Ground_2;
     double mbe, mae, rmse; 
     double mbePct, maePct, rmsePct;
-    double weight;
+    double weight;  // used for current calculation
+    double optimizedWeightPass1;  // the value associated with the minimized RMSE for all models in pass 1
+    double optimizedWeightPass2;  // the value associated with the minimized RMSE for all models in pass 2
     int N;
-    int isActive;
-    int powerOfTen;
+    char isActive;
+    long long powerOfTen;
 } modelStatsType;
 
 typedef struct {
@@ -46,6 +64,7 @@ typedef struct {
     modelStatsType satModelError;
     modelStatsType modelError[MAX_MODELS];
     modelStatsType weightedModelError;
+    double optimizedRMSE;
 } modelErrorType;
 
 typedef struct {
@@ -56,7 +75,7 @@ typedef struct {
     dateTimeType dateTime;
     double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, weightedModelGHI;   // this is the ground data
     hourGroupType hourGroup[MAX_HOURLY_SLOTS];
-    int isValid;
+    char isValid;
 } timeSeriesType;
 
 typedef struct {
@@ -82,6 +101,9 @@ typedef struct {
     double lat, lon;
     int zenithCol, groundGHICol, groundDNICol, groundDiffuseCol, groundTempCol, groundWindCol, satGHICol, clearskyGHICol, startModelsColumnNumber;
     dateTimeType startDate, endDate;
+    char verbose;
+    double weightSumLowCutoff, weightSumHighCutoff;
+    int startHourLowIndex, startHourHighIndex;
 } forecastInputType;
 
 int doErrorAnalysis(forecastInputType *fci, int hourIndex);
@@ -96,6 +118,9 @@ int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex);
 int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex);
 void fatalError(char *functName, char *errStr, char *file, int linenumber);
 void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);
+int runOptimizerNested(forecastInputType *fci, int hourIndex);
+char *getElapsedTime(time_t start_t);
+void printHourlySummary(forecastInputType *fci, int hourIndex);
 
 #endif	/* FORECASTOPT_H */
 
