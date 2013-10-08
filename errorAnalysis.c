@@ -19,7 +19,7 @@ STEP 2  Error calculation
 // satellite GHI is treated as a quasi-model; it's run through the error codes but
 // it's not a forecast entity.
 #define getModelGHI(modelIndex) (modelIndex < 0 ? thisSample->satGHI : thisSample->hourGroup[hourIndex].modelGHI[modelIndex])
-#define incrementModelN(modelIndex) (modelIndex < 0 ? (hourGroup->satModelError.N++) : (hourGroup->modelError[modelIndex].N++))
+#define incrementModelN() (modelIndex < 0 ? (hourGroup->satModelError.N++) : (hourGroup->modelError[modelIndex].N++))
 
 #define DEBUGHOUR 1
 
@@ -27,12 +27,10 @@ void clearModelStats(modelStatsType *thisModelErr);
 
 int doErrorAnalysis(forecastInputType *fci, int hourIndex)
 {
-
     clearHourlyErrorFields(fci, hourIndex);   
 
     if(!filterHourlyModelData(fci, hourIndex))
-        return False;
-           
+        return False;           
     if(!computeHourlyBiasErrors(fci, hourIndex))
         return False;
     if(!computeHourlyRmseErrors(fci, hourIndex))
@@ -49,6 +47,7 @@ void clearHourlyErrorFields(forecastInputType *fci, int hourIndex)
     int modelIndex;
     
 
+    fprintf(stderr, "Clearing stats fields for hour %d\n", hourIndex);
     // zero out all statistical values
     clearModelStats(&hourGroup->satModelError);
     clearModelStats(&hourGroup->weightedModelError);
@@ -75,13 +74,17 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
     modelErrorType *hourGroup = &fci->hourErrorGroup[hourIndex];
     int hoursAhead = fci->hourErrorGroup[hourIndex].hoursAhead;
    
+    // reset a few variables
     hourGroup->meanMeasuredGHI = hourGroup->numValidSamples = hourGroup->ground_N = 0;
+    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) 
+        hourGroup->modelError[modelIndex].N = 0;
 
     // for the each model: does it even go out to the current hoursAhead?
     // use isActive to keep track of this info
-
+    // use usUsale to signify isActive and not a reference forecast model (such as persistence)
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
         hourGroup->modelError[modelIndex].isActive = (getMaxHoursAhead(fci, modelIndex) >= hoursAhead);
+        hourGroup->modelError[modelIndex].isUsable = hourGroup->modelError[modelIndex].isActive && !hourGroup->modelError[modelIndex].isReference;
 #ifdef DEBUG
         fprintf(stderr, "For hours ahead %d and model %s, state = %s\n", hoursAhead, getGenericModelName(fci, modelIndex), hourGroup->modelError[modelIndex].isActive ? "active" : "inactive");
 #endif
@@ -96,10 +99,11 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
             if(modelIndex < 0 || hourGroup->modelError[modelIndex].isActive) {
                 thisGHI = getModelGHI(modelIndex);
                 if(thisGHI < 5) {
-#ifdef DEBUG1
-                    fprintf(stderr, "%s hours ahead %d: bad sample: model %s: GHI = %.1f\n", 
-                            dtToStringCsv2(&thisSample->dateTime), hourGroup->hoursAhead, getGenericModelName(fci, modelIndex), thisGHI);
-#endif                
+//#ifdef DEBUG1
+                    if(thisSample->sunIsUp) 
+                        fprintf(fci->warningsFp, "%s : bad sample: model %s %d hours ahead: GHI = %.1f, zenith = %.1f\n", 
+                            dtToStringCsv2(&thisSample->dateTime), getGenericModelName(fci, modelIndex), hourGroup->hoursAhead, thisGHI, thisSample->zenith);
+//#endif                
                     thisSample->isValid = False;
                     // break;
                 }     
@@ -108,7 +112,7 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
                     fprintf(stderr, "%s hours ahead %d: good sample: model %s: GHI = %.1f\n", 
                          dtToStringCsv2(&thisSample->dateTime), hourGroup->hoursAhead, getGenericModelName(fci, modelIndex), thisGHI);
 #endif                
-                    incrementModelN(modelIndex);
+                    incrementModelN();
                 }
             }
         }
@@ -131,7 +135,7 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
     }
     
     if(hourGroup->numValidSamples < 1) {
-        fprintf(stderr, "doErrorAnalysis(): for hour index %d (%d hours ahead): got too few valid points to work with\n", hourIndex, hourGroup->hoursAhead);
+        fprintf(fci->warningsFp, "doErrorAnalysis(): for hour index %d (%d hours ahead): got too few valid points to work with\n", hourIndex, hourGroup->hoursAhead);
         //FatalError("doErrorAnalysis()", "Too few valid data points to work with.");
         return False;
     }
@@ -182,7 +186,7 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
         exit(1);
     }
     // print the header
-    fprintf(fp, "#year,month,day,hour,min,groupIsValid,groundGHI,satGHI");
+    fprintf(fp, "#year,month,day,hour,min,lineNum,groupIsValid,groundGHI,satGHI");
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
         if(hourGroup->modelError[modelIndex].isActive) {
             fprintf(fp, ",%s", getGenericModelName(fci, modelIndex));
@@ -378,6 +382,7 @@ int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex)
     }
     
     N = hourGroup->numValidSamples;
+
     for(modelIndex=-1; modelIndex < fci->numModels; modelIndex++) {
         thisModelErr = NULL;
         if(modelIndex < 0)
@@ -464,3 +469,4 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex)
 #endif
     return True;
 }
+

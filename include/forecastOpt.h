@@ -52,7 +52,7 @@ typedef struct {
     double optimizedWeightPass1;  // the value associated with the minimized RMSE for all models in pass 1
     double optimizedWeightPass2;  // the value associated with the minimized RMSE for all models in pass 2
     int N;
-    char isActive;
+    char isActive, isReference, isUsable;
     long long powerOfTen;
 } modelStatsType;
 
@@ -64,7 +64,9 @@ typedef struct {
     modelStatsType satModelError;
     modelStatsType modelError[MAX_MODELS];
     modelStatsType weightedModelError;
-    double optimizedRMSE;
+    double optimizedRMSEphase1;
+    double optimizedRMSEphase2;
+    long phase1RMSEcalls, phase2RMSEcalls;
 } modelErrorType;
 
 typedef struct {
@@ -75,7 +77,7 @@ typedef struct {
     dateTimeType dateTime;
     double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, weightedModelGHI;   // this is the ground data
     hourGroupType hourGroup[MAX_HOURLY_SLOTS];
-    char isValid;
+    char isValid, sunIsUp;
 } timeSeriesType;
 
 typedef struct {
@@ -102,9 +104,19 @@ typedef struct {
     int zenithCol, groundGHICol, groundDNICol, groundDiffuseCol, groundTempCol, groundWindCol, satGHICol, clearskyGHICol, startModelsColumnNumber;
     dateTimeType startDate, endDate;
     char verbose;
+    char multipleSites;
     double weightSumLowCutoff, weightSumHighCutoff;
     int startHourLowIndex, startHourHighIndex;
+    char warningsFileName[2048];
+    FILE *warningsFp;
 } forecastInputType;
+
+typedef struct {
+    char siteName[2048];
+    int numModels;
+    char modelNames[MAX_MODELS][2048];  // these two go together
+    int maxHoursAhead[MAX_MODELS];
+} siteType;
 
 int doErrorAnalysis(forecastInputType *fci, int hourIndex);
 char *getGenericModelName(forecastInputType *fci, int modelIndex);
@@ -121,6 +133,7 @@ void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linen
 int runOptimizerNested(forecastInputType *fci, int hourIndex);
 char *getElapsedTime(time_t start_t);
 void printHourlySummary(forecastInputType *fci, int hourIndex);
+void printSummaryCsv(forecastInputType *fci);
 
 #endif	/* FORECASTOPT_H */
 
