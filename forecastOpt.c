@@ -71,8 +71,8 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     int c;
     extern char *optarg;
     extern int optind;
-    HashLineNumber = 2;
-    Delimiter = ",";
+    HashLineNumber = 1;
+    Delimiter = "\t";
     OutputDirectory = NULL;
     int parseDates(forecastInputType *fci, char *optarg);
     fci->startDate.year = -1;
@@ -136,8 +136,14 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
 void help(void) 
 {
     version();
-    printf( "usage: %s [-cthvV] [-a begin,end] [-o output] [-l lowWeightSum] [-u upperWeightSum] forecastFile\n", Progname);
-    printf( "where: forecastFile = .csv forecast file\n");
+    printf( "usage: %s [-csmhvV] [-r beginHourIndex,endHourIndex] [-a begin,end] [-o output] forecastFile\n", Progname);
+    printf( "where: -c = comma separated input [TAB]\n");
+    printf( "       -s hashLineNumber = specify which input file line number has the column defs[1]\n");
+    printf( "       -r beginHourIndex,endHourIndex = specify which hour ahead indexes to start and end with\n");
+    printf( "       -m = input data file contains multiple sites (concatenated)\n");
+    printf( "       -v = be versbose\n");
+    printf( "       -h = help\n");
+    printf( "       forecastFile = .csv forecast file\n");
 }
 
 void version(void)
