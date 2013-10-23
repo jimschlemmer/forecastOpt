@@ -16,14 +16,14 @@
 void help(void);
 void version(void);
 void processForecast(forecastInputType *fci, char *fileName);
-void initForecast(forecastInputType *fci);
+void initForecastInfo(forecastInputType *fci);
 void incrementTimeSeries(forecastInputType *fci);
 int  readForecastFile(forecastInputType *fci, char *fileName);
 int  readDataFromLine(forecastInputType *fci, char *fields[]);
 int  parseDateTime(forecastInputType *fci, dateTimeType *dt, char *dateTimeStr);
-int parseHourIndexes(forecastInputType *fci, char *optarg);
+int  parseHourIndexes(forecastInputType *fci, char *optarg);
 void initInputColumns(forecastInputType *fci);
-void getColumnNumbers(forecastInputType *fci, char *colNamesLine);
+void parseColumnInfo(forecastInputType *fci, char *colNamesLine);
 int  parseArgs(forecastInputType *fci, int argC, char **argV);
 void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int maxHourAhead, int hourIndex, int isReference);
 void runErrorAnalysis(forecastInputType *fci);
@@ -35,8 +35,14 @@ char *getColumnNameByHourModel(forecastInputType *fci, int hrInd, int modInd);
 FILE *openErrorTypeFile(forecastInputType *fci, char *analysisType);
 void printRmseTableHour(forecastInputType *fci, int hourIndex);
 FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int hourIndex);
+void initSiteInfo(forecastInputType *fci);
+void registerSiteName(siteType *si, char *siteName);
+void registerSiteModel(siteType *si, char *modelName, int maxHoursAhead);
+void setSite(forecastInputType *fci);
+int  checkModelAgainstSite(forecastInputType *fci, char *modelName);
+void setSiteInfo(forecastInputType *fci, char *line);
 
-
+ 
 char *Progname, *OutputDirectory;
 FILE *FilteredDataFp;
 char *fileName;
@@ -152,16 +158,14 @@ void processForecast(forecastInputType *fci, char *fileName)
     fprintf(stderr, "%s\n", dtToStringDateTime(&fci->endDate));
     fprintf(stderr, "=== Weight Sum Range: %.2f to %.2f\n", fci->weightSumLowCutoff, fci->weightSumHighCutoff);
 
-    initForecast(fci);
+    initForecastInfo(fci);
+    initSiteInfo(fci);    
     readForecastFile(fci, fileName);
+    
     fprintf(stderr, "=== Hours Ahead: %d to %d\n\n", fci->hourErrorGroup[fci->startHourLowIndex].hoursAhead, fci->hourErrorGroup[fci->startHourHighIndex].hoursAhead);
-
-    sprintf(fci->warningsFileName, "%s/%s.warnings.txt", fci->outputDirectory, fci->siteName);
-    if((fci->warningsFp = fopen(fci->warningsFileName, "w")) == NULL) {
-        fprintf(stderr, "Couldn't open warnings file %s\n", fci->warningsFileName);
-        exit(1);
-    }
-
+    fprintf(stderr, "=== Number of    input records: %d\n", fci->numInputRecords);
+    fprintf(stderr, "=== Number of daylight records: %d\n", fci->numDaylightRecords);
+                
     runErrorAnalysis(fci);
      
     fprintf(stderr, "=== Ending at %s\n", timeOfDayStr());
@@ -175,12 +179,13 @@ void processForecast(forecastInputType *fci, char *fileName)
 int readForecastFile(forecastInputType *fci, char *fileName)
 {
     FILE *fp;
-    char line[LineLength];
+    char line[LineLength], *headerLine;
     int numFields;
     double lat, lon;
     char *fields[MAX_FIELDS], *fldPtr;
     dateTimeType currDate;    
     timeSeriesType *thisSample;
+    char firstLine=True;
     
     if((fp = fopen(fileName, "r")) == NULL) {
         sprintf(ErrStr, "Couldn't open input file %s.", fileName);
@@ -214,11 +219,17 @@ int readForecastFile(forecastInputType *fci, char *fileName)
         LineNumber++;
         if(LineNumber <= HashLineNumber) {
             if(LineNumber == HashLineNumber) {
-                getColumnNumbers(fci, line);
+                headerLine = strdup(line);  // save for later -- like, the next line of input
             }
             continue;
         }        
 
+        else if(firstLine) {
+            firstLine = False;
+            setSiteInfo(fci, line);
+            parseColumnInfo(fci, headerLine);
+        }
+        
         numFields = split(line, fields, MAX_FIELDS, Delimiter);  /* split line */  
         if(numFields < 100) {
             sprintf(ErrStr, "Scanning line %d of file %s, got %d columns using delimiter \"%s\".  Either delimiter flag or -s arg is wrong", LineNumber, fileName, numFields, Delimiter);
@@ -246,15 +257,11 @@ int readForecastFile(forecastInputType *fci, char *fileName)
         
         // siteName
         fldPtr = fields[1];
-        if(fci->siteName == NULL) {
-            fci->siteName = strdup(fldPtr);
+
+        if(!fci->multipleSites && strcasecmp(fldPtr, fci->siteName) != 0) {
+            fprintf(fci->warningsFp, "Warning: siteName changed from %s to %s\n", fci->siteName, fldPtr);
         }
-        else {
-            if(!fci->multipleSites && strcasecmp(fldPtr, fci->siteName) != 0) {
-                fprintf(fci->warningsFp, "Warning: siteName changed from %s to %s\n", fci->siteName, fldPtr);
-            }
-        }
-        
+                
         // lat & lon
         lat = atof(fields[2]);
         lon = atof(fields[3]);
@@ -279,9 +286,48 @@ int readForecastFile(forecastInputType *fci, char *fileName)
             return True;
 */
 
+        fci->numInputRecords++;
     }
     
     return True;
+}
+
+void setSiteInfo(forecastInputType *fci, char *line)
+{
+    char *tempLine = strdup(line);
+    int numFields;
+    char *fields[MAX_FIELDS];
+    
+    // now grab siteName and set the site specific model info
+    numFields = split(tempLine, fields, MAX_FIELDS, Delimiter);  /* split line */
+    fci->siteName = strdup(fields[1]);
+    setSite(fci);
+    
+    // Now that we know the site name we can open the warnings file
+    sprintf(fci->warningsFileName, "%s/%s.warnings.txt", fci->outputDirectory, fci->siteName);
+    if((fci->warningsFp = fopen(fci->warningsFileName, "w")) == NULL) {
+        fprintf(stderr, "Couldn't open warnings file %s\n", fci->warningsFileName);
+        exit(1);
+    }
+
+
+    free(tempLine);
+}
+
+// this assumes fci->siteName has already been set by the input file parser
+void setSite(forecastInputType *fci)
+{
+    int siteNum;
+    
+    for(siteNum=0; siteNum<fci->numSites; siteNum++) {
+        if(strcmp(fci->siteName, fci->allSiteInfo[siteNum].siteName) == 0) {
+            fci->thisSite = &fci->allSiteInfo[siteNum];
+            return;
+        }
+    }
+    
+    fprintf(stderr, "Couldn't find site name \"%s\" in internal site list\n", fci->siteName);
+    exit(1);
 }
 
 #define DT_FORMAT_1 1
@@ -376,7 +422,10 @@ int readDataFromLine(forecastInputType *fci, char *fields[])
         sprintf(ErrStr, "Got bad zenith angle at line %d: %.2f\n", LineNumber, thisSample->zenith);
         FatalError("readDataFromLine()", ErrStr);
     }
+    
     thisSample->sunIsUp = (thisSample->zenith < 85);
+    if(thisSample->sunIsUp)
+        fci->numDaylightRecords++;
        
     thisSample->groundGHI = atof(fields[fci->columnInfo[fci->groundGHICol].inputColumnNumber]);
 /*
@@ -388,7 +437,9 @@ int readDataFromLine(forecastInputType *fci, char *fields[])
         sprintf(ErrStr, "Got bad surface GHI at line %d: %.2f\n", LineNumber, thisSample->groundGHI);
         FatalError("readDataFromLine()", ErrStr);
     }
-    checkTooLow(groundGHI, "groundGHI");
+    //checkTooLow(groundGHI, "groundGHI");
+    if(thisSample->sunIsUp && thisSample->groundGHI < 1)  
+        fprintf(fci->warningsFp, "Warning: line %d: %s looks too low: %.1f\n", LineNumber, "groundGHI", thisSample->groundGHI);
 /*
     if(thisSample->groundGHI < MIN_GHI_VAL)
         thisSample->isValid = False;
@@ -539,7 +590,7 @@ ecmwf_cloud_1                           ECMWF total cloud
 ecmwf_ghi_1                             ECMWF average GHI		
 */
 
-void initForecast(forecastInputType *fci)
+void initForecastInfo(forecastInputType *fci)
 {
     fci->lat = -999;
     fci->lon = -999;
@@ -551,6 +602,8 @@ void initForecast(forecastInputType *fci)
     allocatedSamples = 8670 * MAX_MODELS;
     fci->timeSeries = (timeSeriesType *) malloc(allocatedSamples * sizeof(timeSeriesType));
     fci->numColumnInfoEntries = 0;
+    fci->numInputRecords = 0;
+    fci->numDaylightRecords = 0;
 
     LineNumber = 0;
 }
@@ -626,7 +679,176 @@ ncep_NAM_hires_DSWRF_inst_30
     
 }
 
-void getColumnNumbers(forecastInputType *fci, char *colNamesLine)
+void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int maxHourAhead, int hourIndex, int isReference) 
+{
+    char tempColName[1024], tempColDesc[1024];    
+    
+    if(hourIndex >= 0) {
+        if(!checkModelAgainstSite(fci, columnName)) // if this forecast model isn't on the site's model list, don't register it
+            return;
+        
+        fci->hourErrorGroup[hourIndex].modelError[fci->numModels].isReference = isReference;
+        fci->columnInfo[fci->numColumnInfoEntries].hourGroupIndex = hourIndex;   // this is passed as an arg
+        fci->columnInfo[fci->numColumnInfoEntries].modelIndex = fci->numModels;
+        sprintf(tempColName, "%s%d", columnName, fci->hourErrorGroup[hourIndex].hoursAhead);
+        sprintf(tempColDesc, "%s +%d hours", columnDescription, fci->hourErrorGroup[hourIndex].hoursAhead);
+        fci->columnInfo[fci->numColumnInfoEntries].columnName = strdup(tempColName); //"ncep_RAP_DSWRF_1";                      
+        fci->columnInfo[fci->numColumnInfoEntries].columnDescription = strdup(tempColDesc); //"NCEP RAP GHI";  
+        fci->columnInfo[fci->numColumnInfoEntries].maxHourAhead = maxHourAhead;
+        fci->numColumnInfoEntries++;
+        fci->numModels++;
+    }
+    else {
+        fci->columnInfo[fci->numColumnInfoEntries].columnName = columnName; //"ncep_RAP_DSWRF_1";                      
+        fci->columnInfo[fci->numColumnInfoEntries].columnDescription = columnDescription; //"NCEP RAP GHI";  
+        fci->columnInfo[fci->numColumnInfoEntries].maxHourAhead = maxHourAhead;
+        fci->columnInfo[fci->numColumnInfoEntries].hourGroupIndex = -1;  
+        fci->columnInfo[fci->numColumnInfoEntries].modelIndex = -1;
+        fci->numColumnInfoEntries++;
+    }
+}
+
+int checkModelAgainstSite(forecastInputType *fci, char *modelName)
+{
+    int modelNum;
+    
+    for(modelNum=0; modelNum<fci->thisSite->numModels; modelNum++) {
+        if(strcmp(modelName, fci->thisSite->modelNames[modelNum]) == 0) {
+            return True;
+        }
+    } 
+    
+    fprintf(stderr, "Note: model %s not turned on for site %s\n", modelName, fci->siteName);
+    return False;
+}
+
+void initSiteInfo(forecastInputType *fci)
+{
+    siteType *si;
+/*
+typedef struct {
+    int numModels;
+    char siteNames[2048];
+    char modelNames[MAX_MODELS][2048];
+    int maxHoursAhead[MAX_MODELS];
+} siteType;
+*/
+    fci->numSites = 0;
+    
+    si = &fci->allSiteInfo[fci->numSites]; 
+    registerSiteName(si, "Desert_Rock_NV");
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_RAP_DSWRF_", 18);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "persistence_", 168);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_hires_DSWRF_inst_", 54);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
+    fci->numSites++;
+    
+    si = &fci->allSiteInfo[fci->numSites];    
+    registerSiteName(si, "Goodwin_Creek_MS");
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_RAP_DSWRF_", 18);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "persistence_", 168);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_hires_DSWRF_inst_", 54);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
+    fci->numSites++;
+    
+    si = &fci->allSiteInfo[fci->numSites];    
+    registerSiteName(si, "Penn_State_PA");
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_RAP_DSWRF_", 18);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "persistence_", 168);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_hires_DSWRF_inst_", 54);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
+    fci->numSites++;
+    
+    si = &fci->allSiteInfo[fci->numSites];  
+    registerSiteName(si, "Boulder_CO");
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_RAP_DSWRF_", 18);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "persistence_", 168);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_hires_DSWRF_inst_", 54);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
+    //registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
+    fci->numSites++;
+    
+    si = &fci->allSiteInfo[fci->numSites];  
+    registerSiteName(si, "Bondville_IL");
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_RAP_DSWRF_", 18);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "persistence_", 168);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_hires_DSWRF_inst_", 54);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
+    //registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
+    fci->numSites++;
+    
+    si = &fci->allSiteInfo[fci->numSites];  
+    registerSiteName(si, "Hanford_CA");
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_RAP_DSWRF_", 18);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "persistence_", 168);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_hires_DSWRF_inst_", 54);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
+    //registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
+    fci->numSites++;
+    
+    si = &fci->allSiteInfo[fci->numSites];  
+    registerSiteName(si, "Sioux_Falls_SD");
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_RAP_DSWRF_", 18);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "persistence_", 168);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_hires_DSWRF_inst_", 54);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
+    //registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
+    fci->numSites++;
+        
+}
+
+void registerSiteName(siteType *si, char *siteName)
+{
+    si->siteName = strdup(siteName);
+    si->numModels = 0;
+}
+
+void registerSiteModel(siteType *si, char *modelName, int maxHoursAhead)
+{
+    si->modelNames[si->numModels] = strdup(modelName);
+    si->maxHoursAhead[si->numModels] = maxHoursAhead;
+    si->numModels++;
+}
+
+void parseColumnInfo(forecastInputType *fci, char *colNamesLine)
 {
     int numFields;
     char *fields[MAX_FIELDS];
@@ -672,37 +894,11 @@ void getColumnNumbers(forecastInputType *fci, char *colNamesLine)
 
     if(matches < fci->numColumnInfoEntries) {
         sprintf(ErrStr, "Scanning line %d, only got %d out of %d matches with expected fields", LineNumber, matches, fci->numColumnInfoEntries);
-        FatalError("getColumnNumbers()", ErrStr);
+        FatalError("parseColumnInfo()", ErrStr);
     }
     
     //for(i=)
  
-}
-
-void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int maxHourAhead, int hourIndex, int isReference) 
-{
-    char tempColName[1024], tempColDesc[1024];    
-    
-    if(hourIndex >= 0) {
-        fci->hourErrorGroup[hourIndex].modelError[fci->numModels].isReference = isReference;
-        fci->columnInfo[fci->numColumnInfoEntries].hourGroupIndex = hourIndex;   // this is passed as an arg
-        fci->columnInfo[fci->numColumnInfoEntries].modelIndex = fci->numModels;
-        sprintf(tempColName, "%s%d", columnName, fci->hourErrorGroup[hourIndex].hoursAhead);
-        sprintf(tempColDesc, "%s +%d hours", columnDescription, fci->hourErrorGroup[hourIndex].hoursAhead);
-        fci->columnInfo[fci->numColumnInfoEntries].columnName = strdup(tempColName); //"ncep_RAP_DSWRF_1";                      
-        fci->columnInfo[fci->numColumnInfoEntries].columnDescription = strdup(tempColDesc); //"NCEP RAP GHI";  
-        fci->columnInfo[fci->numColumnInfoEntries].maxHourAhead = maxHourAhead;
-        fci->numColumnInfoEntries++;
-        fci->numModels++;
-    }
-    else {
-        fci->columnInfo[fci->numColumnInfoEntries].columnName = columnName; //"ncep_RAP_DSWRF_1";                      
-        fci->columnInfo[fci->numColumnInfoEntries].columnDescription = columnDescription; //"NCEP RAP GHI";  
-        fci->columnInfo[fci->numColumnInfoEntries].maxHourAhead = maxHourAhead;
-        fci->columnInfo[fci->numColumnInfoEntries].hourGroupIndex = -1;  
-        fci->columnInfo[fci->numColumnInfoEntries].modelIndex = -1;
-        fci->numColumnInfoEntries++;
-    }
 }
 
 void runErrorAnalysis(forecastInputType *fci) 

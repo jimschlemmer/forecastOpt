@@ -37,6 +37,7 @@ extern "C" {
 #define FatalError(function, message) fatalError(function, message, __FILE__, __LINE__)
 
 #define MAX_MODELS 16
+#define MAX_SITES 16
 #define MAX_HOURLY_SLOTS 64
 #define MIN_GHI_VAL 5
 
@@ -89,6 +90,14 @@ typedef struct {
     int  modelIndex;
 } columnType;
 
+// this is for site-specific forecast model on/off settings
+typedef struct {
+    int numModels;
+    char *siteName;
+    char *modelNames[MAX_MODELS];
+    int maxHoursAhead[MAX_MODELS];
+} siteType;
+
 typedef struct {
     columnType columnInfo[MAX_MODELS * MAX_HOURLY_SLOTS];
     modelErrorType hourErrorGroup[MAX_HOURLY_SLOTS];
@@ -109,14 +118,13 @@ typedef struct {
     int startHourLowIndex, startHourHighIndex;
     char warningsFileName[2048];
     FILE *warningsFp;
+    int numSites;
+    siteType allSiteInfo[MAX_SITES];
+    siteType *thisSite; // points to one of the above registered sites
+    int numInputRecords;
+    int numDaylightRecords;
 } forecastInputType;
 
-typedef struct {
-    char siteName[2048];
-    int numModels;
-    char modelNames[MAX_MODELS][2048];  // these two go together
-    int maxHoursAhead[MAX_MODELS];
-} siteType;
 
 int doErrorAnalysis(forecastInputType *fci, int hourIndex);
 char *getGenericModelName(forecastInputType *fci, int modelIndex);

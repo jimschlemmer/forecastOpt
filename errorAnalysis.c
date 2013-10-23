@@ -96,8 +96,8 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
 
         // for the sat model and each forecast model, filter date/times based on all values
         for(modelIndex=-1; modelIndex < fci->numModels; modelIndex++) {
-            if(modelIndex < 0 || hourGroup->modelError[modelIndex].isActive) {
-                thisGHI = getModelGHI(modelIndex);
+            if(modelIndex < 0 || hourGroup->modelError[modelIndex].isActive) { // isActive because we want forecast and reference models
+                thisGHI = (modelIndex < 0 ? thisSample->satGHI : thisSample->hourGroup[hourIndex].modelGHI[modelIndex]);
                 if(thisGHI < 5) {
 //#ifdef DEBUG1
                     if(thisSample->sunIsUp) 
@@ -111,8 +111,11 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
 #ifdef DEBUG1
                     fprintf(stderr, "%s hours ahead %d: good sample: model %s: GHI = %.1f\n", 
                          dtToStringCsv2(&thisSample->dateTime), hourGroup->hoursAhead, getGenericModelName(fci, modelIndex), thisGHI);
-#endif                
-                    incrementModelN();
+#endif                                   
+                    if(modelIndex < 0)
+                        hourGroup->satModelError.N++;
+                    else
+                        hourGroup->modelError[modelIndex].N++;
                 }
             }
         }
