@@ -136,11 +136,12 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
 void help(void) 
 {
     version();
-    printf( "usage: %s [-csmhvV] [-r beginHourIndex,endHourIndex] [-a begin,end] [-o output] forecastFile\n", Progname);
+    printf( "usage: %s [-csmhvV] [-r beginHourIndex,endHourIndex] [-a begin,end] [-o outputDir] forecastFile\n", Progname);
     printf( "where: -c = comma separated input [TAB]\n");
     printf( "       -s hashLineNumber = specify which input file line number has the column defs[1]\n");
     printf( "       -r beginHourIndex,endHourIndex = specify which hour ahead indexes to start and end with\n");
     printf( "       -m = input data file contains multiple sites (concatenated)\n");
+    printf( "       --o outputDir = specify where output files go\n");
     printf( "       -v = be versbose\n");
     printf( "       -h = help\n");
     printf( "       forecastFile = .csv forecast file\n");
@@ -514,7 +515,8 @@ int readDataFromLine(forecastInputType *fci, char *fields[])
         //    fprintf(stderr, "Warning: line %d: %s looks too low: %.1f\n", LineNumber, fci->hourErrorGroup[hourIndex].modelError[modelIndex].columnName, thisSample->hourGroup[hourIndex].modelGHI[modelIndex]); 
         //}
     }
-    
+
+#ifdef DUMP_ALL_DATA
     if(firstTime) {        
         if(filteredDataFileName == NULL || (FilteredDataFp = fopen(filteredDataFileName, "w")) == NULL) {
             sprintf(ErrStr, "Couldn't open output file %s\n", filteredDataFileName);
@@ -529,16 +531,23 @@ int readDataFromLine(forecastInputType *fci, char *fields[])
         fprintf(FilteredDataFp, "\n");
         firstTime = False;
     }
+#endif
     
     if(1) {
         //fci->numValidSamples++;
+#ifdef DUMP_ALL_DATA
         fprintf(FilteredDataFp, "%s,%.2f,%.0f,%.0f,%.0f,%.0f", dtToStringCsv2(&thisSample->dateTime), thisSample->zenith, thisSample->groundGHI, thisSample->groundDNI, thisSample->groundDiffuse, thisSample->clearskyGHI);
+#endif
         for(columnIndex=fci->startModelsColumnNumber; columnIndex<fci->numColumnInfoEntries; columnIndex++) {        
             hourIndex = fci->columnInfo[columnIndex].hourGroupIndex;
             modelIndex = fci->columnInfo[columnIndex].modelIndex;
+#ifdef DUMP_ALL_DATA
             fprintf(FilteredDataFp, ",%.1f", thisSample->hourGroup[hourIndex].modelGHI[modelIndex]);
-        }
+#endif
+    }
+#ifdef DUMP_ALL_DATA
         fprintf(FilteredDataFp, "\n");
+#endif
     }
     
     return True;
