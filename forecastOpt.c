@@ -419,8 +419,10 @@ int readDataFromLine(forecastInputType *fci, char *fields[])
     10 sr_wspd	
     11 sr_rh
     */
+#ifdef DUMP_ALL_DATA
     static char firstTime = True;
     static char *filteredDataFileName = "filteredInputData.csv";
+#endif
     
     timeSeriesType *thisSample = &(fci->timeSeries[fci->numTotalSamples - 1]);  
         
