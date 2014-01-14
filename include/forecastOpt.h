@@ -36,10 +36,14 @@ extern "C" {
 
 #define FatalError(function, message) fatalError(function, message, __FILE__, __LINE__)
 
-#define MAX_MODELS 16
+#define MAX_MODELS 64
 #define MAX_SITES 16
 #define MAX_HOURLY_SLOTS 64
 #define MIN_GHI_VAL 5
+
+// header strings for output .csv files that possibly need to be scanned for later
+#define WEIGHT_1_STR "weight 1"
+#define WEIGHT_2_STR "weight 2"
 
 typedef enum { MKunset, regular } modelKindType;
 
@@ -109,6 +113,7 @@ typedef struct {
     char *siteGroup;
     char *siteName;
     char *outputDirectory;
+    char *summaryFilename;
     double lat, lon;
     int zenithCol, groundGHICol, groundDNICol, groundDiffuseCol, groundTempCol, groundWindCol, satGHICol, clearskyGHICol, startModelsColumnNumber;
     dateTimeType startDate, endDate;
@@ -123,6 +128,7 @@ typedef struct {
     siteType *thisSite; // points to one of the above registered sites
     int numInputRecords;
     int numDaylightRecords;
+    char runWeightedErrorAnalysis;
 } forecastInputType;
 
 

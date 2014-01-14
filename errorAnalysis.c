@@ -450,13 +450,16 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex)
                     thisSample->weightedModelGHI += (thisSample->hourGroup[hourIndex].modelGHI[modelIndex] * weight);
                     weightTotal += weight;               
 #ifdef DEBUG_2
-                    if(hoursAhead == DEBUGHOUR /*&& weightedModelErr->weight > 0.01*/) {
+                    if(hoursAhead == DEBUGHOUR && weightedModelErr->weight > 0.01*/) {
                         fprintf(stderr, "DEBUG:%s,%s=%.1f,weight=%.2f,weightedGHI=%.1f\n", dtToStringCsv2(&thisSample->dateTime),
                                 getGenericModelName(fci, modelIndex),thisSample->hourGroup[hourIndex].modelGHI[modelIndex],weight,thisSample->weightedModelGHI);
                     }
 #endif
                 }
             }
+            if(weightTotal > 1.1) 
+                fprintf(stderr, "Internal Error: model weights sum to %.2f\n", weightTotal);
+            
             diff = thisSample->weightedModelGHI - thisSample->groundGHI;
             weightedModelErr->sumModel_Ground_2 += (diff * diff);
         }

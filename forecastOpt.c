@@ -41,7 +41,9 @@ void registerSiteModel(siteType *si, char *modelName, int maxHoursAhead);
 void setSite(forecastInputType *fci);
 int  checkModelAgainstSite(forecastInputType *fci, char *modelName);
 void setSiteInfo(forecastInputType *fci, char *line);
-
+void dumpWeightedTimeSeries(forecastInputType *fci,int hourIndex);
+int runWeightedTimeSeriesAnalysis(forecastInputType *fci, char *fileName);
+int readSummaryFile(forecastInputType *fci);
  
 char *Progname, *OutputDirectory;
 FILE *FilteredDataFp;
@@ -57,11 +59,15 @@ int main(int argc,char **argv)
 
     Progname = basename(argv[0]);  // strip out path
   
+
     if (!parseArgs(&fci, argc, argv)) {
        exit(1);
     }
  
-    processForecast(&fci, fileName);
+    if(fci.runWeightedErrorAnalysis)
+        runWeightedTimeSeriesAnalysis(&fci, fileName);
+    else
+        processForecast(&fci, fileName);
     
     return(EXIT_SUCCESS);
 }
@@ -84,11 +90,12 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     fci->weightSumHighCutoff = 1.05;
     fci->startHourLowIndex = -1;
     fci->startHourHighIndex = -1;
+    fci->runWeightedErrorAnalysis = False;
     
     //static char tabDel[32];
     //sprintf(tabDel, "%c", 9);  // ascii 9 = TAB
     
-    while ((c=getopt(argC, argV, "a:cto:s:HhvVr:m")) != EOF) {
+    while ((c=getopt(argC, argV, "a:cto:s:HhvVr:mw:")) != EOF) {
         switch (c) {
             case 'c': { Delimiter = ",";
                         break; }
@@ -118,6 +125,9 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                       return(False);
             case 'm': { fci->multipleSites = True;
                         break; }
+            case 'w': { fci->summaryFilename = strdup(optarg);
+                        fci->runWeightedErrorAnalysis = True;
+                        break; }
             default:  return False;         
         }       
     }  
@@ -141,7 +151,7 @@ void help(void)
     printf( "       -s hashLineNumber = specify which input file line number has the column defs[1]\n");
     printf( "       -r beginHourIndex,endHourIndex = specify which hour ahead indexes to start and end with\n");
     printf( "       -m = input data file contains multiple sites (concatenated)\n");
-    printf( "       --o outputDir = specify where output files go\n");
+    printf( "       -o outputDir = specify where output files go\n");
     printf( "       -v = be versbose\n");
     printf( "       -h = help\n");
     printf( "       forecastFile = .csv forecast file\n");
@@ -180,7 +190,7 @@ void processForecast(forecastInputType *fci, char *fileName)
     return;
 }
 
-#define LineLength 1024 * 32
+#define LineLength 1024 * 64
 #define MAX_FIELDS 2048
 
 int readForecastFile(forecastInputType *fci, char *fileName)
@@ -679,18 +689,20 @@ ncep_NAM_hires_DSWRF_inst_30
     // right now you have to know the model names ahead of time
     for(hourIndex=0; hourIndex<fci->numHourGroups; hourIndex++) {        
         fci->numModels = 0;
-        registerColumnInfo(fci, "ncep_RAP_DSWRF_", "NCEP RAP GHI", 18, hourIndex, 0);                      
+        //registerColumnInfo(fci, "ncep_RAP_DSWRF_", "NCEP RAP GHI", 18, hourIndex, 0);    
+        // ncep_HRRR_DSWRF_1	ncep_HRRR_LCDC_1	ncep_HRRR_HCDC_1	ncep_HRRR_TCDC_1	ncep_HRRR_MCDC_1
+        registerColumnInfo(fci, "ncep_HRRR_DSWRF_", "NCEP HRRR GHI", 15, hourIndex, 0);
         registerColumnInfo(fci, "persistence_", "Persistence GHI", 168, hourIndex, 1);
         registerColumnInfo(fci, "ncep_NAM_hires_DSWRF_inst_", "NAM Hi Res Instant GHI", 54, hourIndex, 0);		
         registerColumnInfo(fci, "ncep_NAM_DSWRF_", "NAM Low Res Instant GHI", 78, hourIndex, 0);	
         registerColumnInfo(fci, "ncep_GFS_sfc_DSWRF_surface_avg_", "GFS Hi Res Average GHI", 384, hourIndex, 0);		
         registerColumnInfo(fci, "ncep_GFS_sfc_DSWRF_surface_inst_", "GFS Hi Res Instant GHI", 384, hourIndex, 0);		
-        registerColumnInfo(fci, "ncep_GFS_DSWRF_", "GFS Low res Average GHI", 192, hourIndex, 0);	
+        registerColumnInfo(fci, "ncep_GFS_DSWRF_", "GFS Low res Average GHI", 372, hourIndex, 0);	
         registerColumnInfo(fci, "NDFD_global_", "NDFD GHI", 144, hourIndex, 0);
         registerColumnInfo(fci, "cm_", "Cloud motion GHI", 9, hourIndex, 0);
         registerColumnInfo(fci, "ecmwf_ghi_", "ECMWF average GHI", 240, hourIndex, 0);        
     }
-    
+
     for(i=0; i<fci->numColumnInfoEntries; i++)
         fci->columnInfo[i].inputColumnNumber = -1;   // set default
     
@@ -760,7 +772,7 @@ typedef struct {
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
-    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 372);  // "ncep_GFS_DSWRF_372"
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
@@ -774,7 +786,7 @@ typedef struct {
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
-    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 372);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
@@ -788,7 +800,7 @@ typedef struct {
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
-    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 372);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
@@ -802,7 +814,7 @@ typedef struct {
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
-    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 372);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
     //registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
@@ -816,7 +828,7 @@ typedef struct {
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
-    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 372);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
     //registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
@@ -830,7 +842,7 @@ typedef struct {
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
-    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 372);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
     //registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
@@ -841,13 +853,14 @@ typedef struct {
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_RAP_DSWRF_", 18);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "persistence_", 168);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_hires_DSWRF_inst_", 54);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_HRRR_DSWRF_", 15);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_avg_", 384);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_sfc_DSWRF_surface_inst_", 384);
-    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 192);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_GFS_DSWRF_", 372);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "NDFD_global_", 144);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "cm_", 9);
-    //registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ecmwf_ghi_", 240);
     fci->numSites++;
         
 }
@@ -931,6 +944,7 @@ void runErrorAnalysis(forecastInputType *fci)
         runOptimizerNested(fci, hourIndex);
         fprintf(stderr, "\n############ End hour ahead %d\n", fci->hourErrorGroup[hourIndex].hoursAhead);
 
+        dumpWeightedTimeSeries(fci,hourIndex);
     }
 
 //    printByHour(fci);
@@ -1360,18 +1374,19 @@ void printSummaryCsv(forecastInputType *fci)
     char filename[1024], modelName[1024];
     FILE *fp;
     
-    sprintf(filename, "%s/%s.wtRange=%.2f-%.2f_ha=%d-%d.csv", fci->outputDirectory, fci->siteName, fci->weightSumLowCutoff, fci->weightSumHighCutoff, fci->hourErrorGroup[fci->startHourLowIndex].hoursAhead, fci->hourErrorGroup[fci->startHourHighIndex].hoursAhead);
+    //sprintf(filename, "%s/%s.wtRange=%.2f-%.2f_ha=%d-%d.csv", fci->outputDirectory, fci->siteName, fci->weightSumLowCutoff, fci->weightSumHighCutoff, fci->hourErrorGroup[fci->startHourLowIndex].hoursAhead, fci->hourErrorGroup[fci->startHourHighIndex].hoursAhead);
+    sprintf(filename, "%s/forecastSummary.%s.%s_%s_hours=%d-%d.csv", fci->outputDirectory, fci->siteName, dtToStringFilename(&fci->startDate), dtToStringFilename(&fci->endDate), fci->hourErrorGroup[fci->startHourLowIndex].hoursAhead, fci->hourErrorGroup[fci->startHourHighIndex].hoursAhead);
     
     if((fp = fopen(filename, "w")) == NULL) {
         fprintf(stderr, "Couldn't open file %s\n", filename);
         exit(1);
     }
     // print the header
-    fprintf(fp, "#site=%s lat=%.3f lon=%.3f\n", fci->siteName, fci->lat, fci->lon);
+    fprintf(fp, "#site=%s lat=%.3f lon=%.3f start date=%s end date=%s\n", fci->siteName, fci->lat, fci->lon, dtToStringFilename(&fci->startDate), dtToStringFilename(&fci->endDate));
     fprintf(fp, "#hoursAhead,group N,sat RMSE,phase 1 RMSE,phase 2 RMSE,phase 1 RMSE calls,phase 2 RMSE calls");
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
         strcpy(modelName, getGenericModelName(fci, modelIndex));
-        fprintf(fp, ",%s model, %s status,%s N,%s RMSE,%s Weight 1,%s weight 2", modelName, modelName, modelName, modelName, modelName, modelName);
+        fprintf(fp, ",%s model, %s status,%s N,%s RMSE,%s %s,%s %s", modelName, modelName, modelName, modelName, modelName, WEIGHT_1_STR, modelName, WEIGHT_2_STR);
     }
     fprintf(fp, "\n");
 
@@ -1395,3 +1410,202 @@ void printSummaryCsv(forecastInputType *fci)
     
     fclose(fp);
 }
+
+int runWeightedTimeSeriesAnalysis(forecastInputType *fci, char *fileName)
+{
+    
+    initForecastInfo(fci);
+    initSiteInfo(fci);    
+    readForecastFile(fci, fileName);
+
+    if(!readSummaryFile(fci)) 
+        return False;
+    
+    return True;
+}
+
+// run as: -t -s 1 -a 2013062200,2013082500 -r0,15 -v -o /home/jim/mom/forecastOpt/output -w /home/jim/mom/forecastOpt/output/Sioux_Falls_SD.wtRange=0.95-1.05_ha=1-36.csv /var/www/html/kmh/data/adam/forecast.sioux_falls.csv
+
+// read in forecastOpt summary file (i.e, hours ahead, weights and RMSE numbers from a previous run)
+int readSummaryFile(forecastInputType *fci)
+{
+    FILE *fp;
+    char line[LineLength], saveLine[LineLength];
+    char siteStr[256], latStr[256], lonStr[256];
+    char *fields[MAX_FIELDS], *fldPtr;
+    int numFields, i;
+    
+    if((fp = fopen(fci->summaryFilename, "r")) == NULL) {
+        sprintf(ErrStr, "Couldn't open summary file %s : \"%s\"", fci->summaryFilename, strerror(errno));
+        FatalError("readSummaryFile()", ErrStr);
+    }
+    
+/*
+#site=Goodwin_Creek_MS lat=34.250 lon=-89.870
+#hoursAhead,group N,sat RMSE,phase 1 RMSE,phase 2 RMSE,phase 1 RMSE calls,phase 2 RMSE calls,ncep_RAP_DSWRF model, ncep_RAP_DSWRF status,ncep_RAP_DSWRF N,ncep_RAP_DSWRF RMSE,ncep_RAP_DSWRF Weight 1,ncep_RAP_DSWRF weight 2,persistence model, persistence status,persistence N,persistence RMSE,persistence Weight 1,persistence weight 2,ncep_NAM_hires_DSWRF_inst model, ncep_NAM_hires_DSWRF_inst status,ncep_NAM_hires_DSWRF_inst N,ncep_NAM_hires_DSWRF_inst RMSE,ncep_NAM_hires_DSWRF_inst Weight 1,ncep_NAM_hires_DSWRF_inst weight 2,ncep_NAM_DSWRF model, ncep_NAM_DSWRF status,ncep_NAM_DSWRF N,ncep_NAM_DSWRF RMSE,ncep_NAM_DSWRF Weight 1,ncep_NAM_DSWRF weight 2,ncep_GFS_sfc_DSWRF_surface_avg model, ncep_GFS_sfc_DSWRF_surface_avg status,ncep_GFS_sfc_DSWRF_surface_avg N,ncep_GFS_sfc_DSWRF_surface_avg RMSE,ncep_GFS_sfc_DSWRF_surface_avg Weight 1,ncep_GFS_sfc_DSWRF_surface_avg weight 2,ncep_GFS_sfc_DSWRF_surface_inst model, ncep_GFS_sfc_DSWRF_surface_inst status,ncep_GFS_sfc_DSWRF_surface_inst N,ncep_GFS_sfc_DSWRF_surface_inst RMSE,ncep_GFS_sfc_DSWRF_surface_inst Weight 1,ncep_GFS_sfc_DSWRF_surface_inst weight 2,ncep_GFS_DSWRF model, ncep_GFS_DSWRF status,ncep_GFS_DSWRF N,ncep_GFS_DSWRF RMSE,ncep_GFS_DSWRF Weight 1,ncep_GFS_DSWRF weight 2,NDFD_global model, NDFD_global status,NDFD_global N,NDFD_global RMSE,NDFD_global Weight 1,NDFD_global weight 2,cm model, cm status,cm N,cm RMSE,cm Weight 1,cm weight 2,ecmwf_ghi model, ecmwf_ghi status,ecmwf_ghi N,ecmwf_ghi RMSE,ecmwf_ghi Weight 1,ecmwf_ghi weight 2
+1,777,21.53,18.40,18.30,43758,73689,forecast,active,837,36.93,0.10,0.11,reference,active,836,27.03,0.00,0.00,forecast,active,837,38.62,0.00,0.00,forecast,active,846,40.64,0.00,0.00,forecast,active,837,32.50,0.00,0.00,forecast,active,820,32.35,0.10,0.07,forecast,active,830,32.30,0.00,0.00,forecast,active,829,38.35,0.00,0.00,forecast,active,807,19.65,0.80,0.84,forecast,active,838,30.11,0.00,0.00
+2,778,21.59,23.02,22.98,43758,6672666,forecast,active,835,39.38,0.10,0.10,reference,active,836,32.59,0.00,0.00,forecast,active,840,38.81,0.10,0.07,forecast,active,845,41.29,0.00,0.00,forecast,active,837,32.27,0.00,0.00,forecast,active,820,32.23,0.10,0.13,forecast,active,830,32.10,0.00,0.00,forecast,active,829,38.60,0.00,0.00,forecast,active,803,25.83,0.60,0.60,forecast,active,838,30.01,0.10,0.11
+*/
+
+    // first comment line should look like this:
+    // #site=Goodwin_Creek_MS lat=34.250 lon=-89.870
+    fgets(line, LineLength, fp);
+    strcpy(saveLine, line);
+    // split by space then by =
+    numFields = split(line, fields, MAX_FIELDS, " ");  /* split line */
+    if(numFields != 3) {
+        fprintf(stderr, "Error parsing %s: header line 1: expecting 3 fields but got %d: %s\n", fci->summaryFilename, numFields, saveLine);
+        exit(1);
+    }
+    strcpy(siteStr, fields[0]);
+    strcpy(latStr, fields[1]);
+    strcpy(lonStr, fields[2]);
+    
+    // siteName
+    numFields = split(siteStr, fields, MAX_FIELDS, "=");
+    if(numFields != 2) {
+        fprintf(stderr, "Error parsing %s: header line 1: can't figure siteName: %s\n", fci->summaryFilename, saveLine);
+        exit(1);
+    }
+    fci->siteName = strdup(fields[1]);
+
+    // latitude
+    numFields = split(latStr, fields, MAX_FIELDS, "=");
+    if(numFields != 2) {
+        fprintf(stderr, "Error parsing %s: header line 1: can't figure latitude: %s\n", fci->summaryFilename, saveLine);
+        exit(1);
+    }
+    fci->lat = atof(fields[1]);
+    if(fci->lat < -90 || fci->lat > 90) {
+        fprintf(stderr, "Error parsing %s: header line 1: can't figure latitude: %s\n", fci->summaryFilename, saveLine);
+        exit(1);        
+    }
+
+    // longitude
+    numFields = split(lonStr, fields, MAX_FIELDS, "=");
+    if(numFields != 2) {
+        fprintf(stderr, "Error parsing %s: header line 1: can't figure longitude: %s\n", fci->summaryFilename, saveLine);
+        exit(1);
+    }
+    fci->lon = atof(fields[1]);
+    if(fci->lat < -180 || fci->lat > 180) {
+        fprintf(stderr, "Error parsing %s: header line 1: can't figure longitude: %s\n", fci->summaryFilename, saveLine);
+        exit(1);        
+    }
+
+    // now we have to parse the column names line (example file: Penn_State_PA.wtRange=0.95-1.05_ha=1-36.csv)
+    // #hoursAhead,group N,sat RMSE,phase 1 RMSE,phase 2 RMSE,phase 1 RMSE calls,phase 2 RMSE calls,ncep_RAP_DSWRF model, ncep_RAP_DSWRF status,ncep_RAP_DSWRF N,ncep_RAP_DSWRF RMSE,ncep_RAP_DSWRF Weight 1,ncep_RAP_DSWRF weight 2,persistence model, persistence status,persistence N,persistence RMSE,persistence Weight 1,persistence weight 2,ncep_NAM_hires_DSWRF_inst model, ncep_NAM_hires_DSWRF_inst status,ncep_NAM_hires_DSWRF_inst N,ncep_NAM_hires_DSWRF_inst RMSE,ncep_NAM_hires_DSWRF_inst Weight 1,ncep_NAM_hires_DSWRF_inst weight 2,ncep_NAM_DSWRF model, ncep_NAM_DSWRF status,ncep_NAM_DSWRF N,ncep_NAM_DSWRF RMSE,ncep_NAM_DSWRF Weight 1,ncep_NAM_DSWRF weight 2,ncep_GFS_sfc_DSWRF_surface_avg model, ncep_GFS_sfc_DSWRF_surface_avg status,ncep_GFS_sfc_DSWRF_surface_avg N,ncep_GFS_sfc_DSWRF_surface_avg RMSE,ncep_GFS_sfc_DSWRF_surface_avg Weight 1,ncep_GFS_sfc_DSWRF_surface_avg weight 2,ncep_GFS_sfc_DSWRF_surface_inst model, ncep_GFS_sfc_DSWRF_surface_inst status,ncep_GFS_sfc_DSWRF_surface_inst N,ncep_GFS_sfc_DSWRF_surface_inst RMSE,ncep_GFS_sfc_DSWRF_surface_inst Weight 1,ncep_GFS_sfc_DSWRF_surface_inst weight 2,ncep_GFS_DSWRF model, ncep_GFS_DSWRF status,ncep_GFS_DSWRF N,ncep_GFS_DSWRF RMSE,ncep_GFS_DSWRF Weight 1,ncep_GFS_DSWRF weight 2,NDFD_global model, NDFD_global status,NDFD_global N,NDFD_global RMSE,NDFD_global Weight 1,NDFD_global weight 2,cm model, cm status,cm N,cm RMSE,cm Weight 1,cm weight 2,ecmwf_ghi model, ecmwf_ghi status,ecmwf_ghi N,ecmwf_ghi RMSE,ecmwf_ghi Weight 1,ecmwf_ghi weight 2
+
+    char *headerLine = line+1;  // skip # char
+    fgets(headerLine, LineLength, fp);
+    
+    numFields = split(line, fields, MAX_FIELDS, ",");  /* split line */
+    
+    for(i=0; i<numFields; i++) {
+        
+        
+       if(strstr(fields[i], WEIGHT_2_STR) != NULL) {
+            fprintf(stderr, "\tgot %s\n", fields[i]);
+        }
+    }
+    
+    LineNumber = 2;
+
+    //modelErrorType *hourGroup;
+    
+    while(fgets(line, LineLength, fp)) {
+        LineNumber++; 
+        
+        numFields = split(line, fields, MAX_FIELDS, ",");  /* split line */  
+        if(numFields < 20) {
+            sprintf(ErrStr, "Scanning line %d of file %s, got %d columns using delimiter \"%s\" (expecting at least 20).\nEither delimiter flag or -s arg is wrong", LineNumber, fileName, numFields, Delimiter);
+            FatalError("readSummaryFile()", ErrStr);
+        }
+                      
+        //int hoursAhead = atoi(fields[0]);
+        //hourGroup = &fci->hourErrorGroup[hourIndex];
+        
+        // siteGroup
+        fldPtr = fields[0];
+/*
+        if(fci->siteGroup == NULL) {
+            fci->siteGroup = strdup(fldPtr);
+        }
+        else {
+            if(!fci->multipleSites && strcasecmp(fldPtr, fci->siteGroup) != 0) {
+                fprintf(fci->warningsFp, "Warning: siteGroup changed from %s to %s\n", fci->siteGroup, fldPtr);
+            }
+        }
+        
+        // siteName
+        fldPtr = fields[1];
+
+        if(!fci->multipleSites && strcasecmp(fldPtr, fci->siteName) != 0) {
+            fprintf(fci->warningsFp, "Warning: siteName changed from %s to %s\n", fci->siteName, fldPtr);
+        }
+                
+        // lat & lon
+        lat = atof(fields[2]);
+        lon = atof(fields[3]);
+
+        if(fci->lat == -999 || fci->lon == -999) {
+            fci->lat = lat;
+            fci->lon = lon;
+        }
+        else {
+            if(!fci->multipleSites && fabs(lat - fci->lat) > 0.01) {
+                fprintf(fci->warningsFp, "Warning: latitude changed from %.3f to %.3f\n", fci->lat, lat);
+            }
+            if(!fci->multipleSites && fabs(lon - fci->lon) > 0.01) {
+                fprintf(fci->warningsFp, "Warning: longitude changed from %.3f to %.3f\n", fci->lon, lon);
+            }        
+        }
+        
+        (void) readDataFromLine(fci, fields);
+        
+
+        if(fci->numValidSamples == 3)
+            return True;
+*/
+
+        fci->numInputRecords++;
+
+    }
+    
+    return(True);
+}
+
+void dumpWeightedTimeSeries(forecastInputType *fci,int hourIndex)
+{
+    int sampleInd, modelIndex;
+    double weight, weightTotal;
+    timeSeriesType *thisSample;
+    modelErrorType *hourGroup = &fci->hourErrorGroup[hourIndex];
+    modelStatsType *thisModelErr;
+
+/*
+  if(!fci->weightedTimeSeriesFp)
+    return;
+*/
+
+    for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
+        thisSample = &fci->timeSeries[sampleInd];
+        if(thisSample->isValid) {
+            weightTotal = 0;
+            thisSample->weightedModelGHI = 0;
+            for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+                thisModelErr = &fci->hourErrorGroup[hourIndex].modelError[modelIndex];
+                            
+                if(hourGroup->modelError[modelIndex].isActive) {
+                    weight = thisModelErr->optimizedWeightPass2;
+                    thisSample->weightedModelGHI += (thisSample->hourGroup[hourIndex].modelGHI[modelIndex] * weight);
+                    weightTotal += weight;            
+                }            
+            }        
+        }
+
+        fprintf(stderr, "DWTS: %s,%d,%f,%f,%f\n",dtToStringCsv2(&thisSample->dateTime),fci->hourErrorGroup[hourIndex].hoursAhead,thisSample->weightedModelGHI/weightTotal,thisSample->weightedModelGHI
+,weightTotal);
+    }
+}
+

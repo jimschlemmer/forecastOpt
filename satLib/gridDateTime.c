@@ -334,6 +334,14 @@ char *dtToStringCsv2(dateTimeType *dt)
     return str;
 }
 
+char *dtToStringFilename(dateTimeType *dt)
+{
+    static char str[256];
+    
+    sprintf(str, "%d%02d%02d.%02d%02d00", dt->year, dt->month, dt->day, dt->hour, dt->min);
+    return str;
+}
+
 // now we just have a couple of functions to write ascii dates to and read from 
 // files.
 int saveDateToFile(dateTimeType *dt, char *fileName)
