@@ -34,9 +34,14 @@ extern "C" {
 }
 #endif
 
+#ifndef MIN
+#define MIN(x, y)       ((x) < (y) ? (x) : (y))
+#define MAX(x, y)       ((x) > (y) ? (x) : (y))
+#endif
+
 #define FatalError(function, message) fatalError(function, message, __FILE__, __LINE__)
 
-#define MAX_MODELS 64
+#define MAX_MODELS 16
 #define MAX_SITES 16
 #define MAX_HOURLY_SLOTS 64
 #define MIN_GHI_VAL 5
@@ -57,7 +62,7 @@ typedef struct {
     double optimizedWeightPass1;  // the value associated with the minimized RMSE for all models in pass 1
     double optimizedWeightPass2;  // the value associated with the minimized RMSE for all models in pass 2
     int N;
-    char isActive, isReference, isUsable;
+    char isActive, isReference, isUsable, missingData;
     long long powerOfTen;
 } modelStatsType;
 
@@ -76,12 +81,12 @@ typedef struct {
 
 typedef struct {
     double modelGHI[MAX_MODELS];
-} hourGroupType;
+} modelDataType;
 
 typedef struct {
     dateTimeType dateTime;
     double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, weightedModelGHI;   // this is the ground data
-    hourGroupType hourGroup[MAX_HOURLY_SLOTS];
+    modelDataType modelData[MAX_HOURLY_SLOTS];
     char isValid, sunIsUp;
 } timeSeriesType;
 
@@ -89,9 +94,11 @@ typedef struct {
     char *columnName;
     char *columnDescription;
     int  inputColumnNumber;
-    int  maxHourAhead;
-    int  hourGroupIndex;
+    int  maxhoursAhead;
+    int  hoursAheadIndex;
     int  modelIndex;
+    int numGood, numMissing;
+    double percentMissing;
 } columnType;
 
 // this is for site-specific forecast model on/off settings
@@ -107,7 +114,7 @@ typedef struct {
     modelErrorType hourErrorGroup[MAX_HOURLY_SLOTS];
     int numColumnInfoEntries;
     int numModels;
-    int numHourGroups;
+    int nummodelDatas;
     int numTotalSamples;
     timeSeriesType *timeSeries;
     char *siteGroup;
@@ -129,6 +136,7 @@ typedef struct {
     int numInputRecords;
     int numDaylightRecords;
     char runWeightedErrorAnalysis;
+    char *headerLine;
 } forecastInputType;
 
 

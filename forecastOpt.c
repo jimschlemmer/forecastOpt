@@ -3,15 +3,19 @@
  */
 
 /* todo
- 1) figure out how to exclude a model from some sites
- 2) get model to run on all sites and produce one set of weights based on that
+ * New file format.  Now, not all hours ahead will be present for all models.  So cm_ might only go out 9 hours.  However,
+ * just because a model has a given hours ahead column, doesn't mean it's being used.  
+ * 
+ * Trying to figure out if I should attempt to figure on the fly whether a meas_hr is valid or take it from elsewhere.
  */
+
 #include "forecastOpt.h"
 
 #define VERSION "1.0"
 
 #define MIN_IRR -25
 #define MAX_IRR 1500
+#define DUMP_ALL_DATA
     
 void help(void);
 void version(void);
@@ -22,10 +26,10 @@ int  readForecastFile(forecastInputType *fci, char *fileName);
 int  readDataFromLine(forecastInputType *fci, char *fields[]);
 int  parseDateTime(forecastInputType *fci, dateTimeType *dt, char *dateTimeStr);
 int  parseHourIndexes(forecastInputType *fci, char *optarg);
-void initInputColumns(forecastInputType *fci);
-void parseColumnInfo(forecastInputType *fci, char *colNamesLine);
+void scanHeaderLine(forecastInputType *fci);
+void parseColumnInfo(forecastInputType *fci);
 int  parseArgs(forecastInputType *fci, int argC, char **argV);
-void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int maxHourAhead, int hourIndex, int isReference);
+void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int isReference, int isForecast);
 void runErrorAnalysis(forecastInputType *fci);
 void getNumberOfHoursAhead(forecastInputType *fci, char *origLine);
 void printByHour(forecastInputType *fci);
@@ -44,6 +48,7 @@ void setSiteInfo(forecastInputType *fci, char *line);
 void dumpWeightedTimeSeries(forecastInputType *fci,int hourIndex);
 int runWeightedTimeSeriesAnalysis(forecastInputType *fci, char *fileName);
 int readSummaryFile(forecastInputType *fci);
+void studyData(forecastInputType *fci);
  
 char *Progname, *OutputDirectory;
 FILE *FilteredDataFp;
@@ -176,10 +181,10 @@ void processForecast(forecastInputType *fci, char *fileName)
     fprintf(stderr, "=== Weight Sum Range: %.2f to %.2f\n", fci->weightSumLowCutoff, fci->weightSumHighCutoff);
 
     initForecastInfo(fci);
-    initSiteInfo(fci);    
+    //initSiteInfo(fci);    
     readForecastFile(fci, fileName);
     
-    fprintf(stderr, "=== Hours Ahead: %d to %d\n\n", fci->hourErrorGroup[fci->startHourLowIndex].hoursAhead, fci->hourErrorGroup[fci->startHourHighIndex].hoursAhead);
+    fprintf(stderr, "=== Hours Ahead: %d to %d\n", fci->hourErrorGroup[fci->startHourLowIndex].hoursAhead, fci->hourErrorGroup[fci->startHourHighIndex].hoursAhead);
     fprintf(stderr, "=== Number of    input records: %d\n", fci->numInputRecords);
     fprintf(stderr, "=== Number of daylight records: %d\n", fci->numDaylightRecords);
                 
@@ -190,13 +195,13 @@ void processForecast(forecastInputType *fci, char *fileName)
     return;
 }
 
-#define LineLength 1024 * 64
 #define MAX_FIELDS 2048
+#define LINE_LENGTH MAX_FIELDS * 64  
 
 int readForecastFile(forecastInputType *fci, char *fileName)
 {
     FILE *fp;
-    char line[LineLength], *headerLine;
+    char line[LINE_LENGTH];
     int numFields;
     double lat, lon;
     char *fields[MAX_FIELDS], *fldPtr;
@@ -223,8 +228,8 @@ int readForecastFile(forecastInputType *fci, char *fileName)
     10 sr_wspd	
     11 sr_rh	
     12 lat	     <-- what should we do about these 3?
-    13 lon	
-    14 validTime	
+    13 lon	     <--
+    14 validTime     <--
     15 sat_ghi	
     16 clear_ghi	
     17 CosSolarZenithAngle	
@@ -232,11 +237,11 @@ int readForecastFile(forecastInputType *fci, char *fileName)
     */
 
     
-    while(fgets(line, LineLength, fp)) {
+    while(fgets(line, LINE_LENGTH, fp)) {
         LineNumber++;
         if(LineNumber <= HashLineNumber) {
             if(LineNumber == HashLineNumber) {
-                headerLine = strdup(line);  // save for later -- like, the next line of input
+                fci->headerLine = strdup(line);  // save for later -- like, the next line of input
             }
             continue;
         }        
@@ -244,7 +249,7 @@ int readForecastFile(forecastInputType *fci, char *fileName)
         else if(firstLine) {
             firstLine = False;
             setSiteInfo(fci, line);
-            parseColumnInfo(fci, headerLine);
+            scanHeaderLine(fci);
         }
         
         numFields = split(line, fields, MAX_FIELDS, Delimiter);  /* split line */  
@@ -306,6 +311,8 @@ int readForecastFile(forecastInputType *fci, char *fileName)
         fci->numInputRecords++;
     }
     
+    studyData(fci);
+    
     return True;
 }
 
@@ -314,11 +321,13 @@ void setSiteInfo(forecastInputType *fci, char *line)
     char *tempLine = strdup(line);
     int numFields;
     char *fields[MAX_FIELDS];
-    
+        
     // now grab siteName and set the site specific model info
     numFields = split(tempLine, fields, MAX_FIELDS, Delimiter);  /* split line */
     fci->siteName = strdup(fields[1]);
-    setSite(fci);
+    registerSiteName(&fci->allSiteInfo[fci->numSites], fci->siteName);
+    fci->thisSite = &fci->allSiteInfo[fci->numSites];
+    //setSite(fci);
     
     // Now that we know the site name we can open the warnings file
     sprintf(fci->warningsFileName, "%s/%s.warnings.txt", fci->outputDirectory, fci->siteName);
@@ -327,7 +336,8 @@ void setSiteInfo(forecastInputType *fci, char *line)
         exit(1);
     }
 
-
+    fci->numSites++;
+    
     free(tempLine);
 }
 
@@ -429,6 +439,8 @@ int readDataFromLine(forecastInputType *fci, char *fields[])
     10 sr_wspd	
     11 sr_rh
     */
+
+    
 #ifdef DUMP_ALL_DATA
     static char firstTime = True;
     static char *filteredDataFileName = "filteredInputData.csv";
@@ -516,15 +528,25 @@ int readDataFromLine(forecastInputType *fci, char *fields[])
     
     int columnIndex, modelIndex, hourIndex;
     for(columnIndex=fci->startModelsColumnNumber; columnIndex<fci->numColumnInfoEntries; columnIndex++) {
-        hourIndex = fci->columnInfo[columnIndex].hourGroupIndex;
+        hourIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
         modelIndex = fci->columnInfo[columnIndex].modelIndex;
-        thisSample->hourGroup[hourIndex].modelGHI[modelIndex] = atof(fields[fci->columnInfo[columnIndex].inputColumnNumber]);
+/*
+        if(strcmp(fci->columnInfo[columnIndex].columnName, "ncep_HRRR_DSWRF_1") == 0)
+            printf("hi\n");
+*/
+        if(strlen(fields[fci->columnInfo[columnIndex].inputColumnNumber]) < 1) {  // no data present
+            //fprintf(stderr, "%s line %d: input col = %d, data = %s\n", fci->columnInfo[columnIndex].columnName, LineNumber, fci->columnInfo[columnIndex].inputColumnNumber, fields[fci->columnInfo[columnIndex].inputColumnNumber]);
+            thisSample->modelData[hourIndex].modelGHI[modelIndex] = -999;
+        }
+        else {
+            thisSample->modelData[hourIndex].modelGHI[modelIndex] = atof(fields[fci->columnInfo[columnIndex].inputColumnNumber]);
+        }
         //fprintf(stderr, "modelDesc=%s,columnInfoIndex=%d,inputCol=%d,hourInd=%d,modelIndex=%d,scanVal=%s,atofVal=%.1f\n", fci->columnInfo[columnIndex].columnName, columnIndex, fci->columnInfo[columnIndex].inputColumnNumber, 
-        //        hourIndex, modelIndex, fields[fci->columnInfo[columnIndex].inputColumnNumber],thisSample->hourGroup[hourIndex].modelGHI[modelIndex]);
+        //        hourIndex, modelIndex, fields[fci->columnInfo[columnIndex].inputColumnNumber],thisSample->modelData[hourIndex].modelGHI[modelIndex]);
         //if(thisSample->modelGHIvalues[modelIndex] < MIN_GHI_VAL)
         //    thisSample->isValid = False;
-        //if(thisSample->sunIsUp && thisSample->hourGroup[hourIndex].modelGHI[modelIndex] < 1) { 
-        //    fprintf(stderr, "Warning: line %d: %s looks too low: %.1f\n", LineNumber, fci->hourErrorGroup[hourIndex].modelError[modelIndex].columnName, thisSample->hourGroup[hourIndex].modelGHI[modelIndex]); 
+        //if(thisSample->sunIsUp && thisSample->modelData[hourIndex].modelGHI[modelIndex] < 1) { 
+        //    fprintf(stderr, "Warning: line %d: %s looks too low: %.1f\n", LineNumber, fci->hourErrorGroup[hourIndex].modelError[modelIndex].columnName, thisSample->modelData[hourIndex].modelGHI[modelIndex]); 
         //}
     }
 
@@ -545,24 +567,65 @@ int readDataFromLine(forecastInputType *fci, char *fields[])
     }
 #endif
     
-    if(1) {
-        //fci->numValidSamples++;
 #ifdef DUMP_ALL_DATA
         fprintf(FilteredDataFp, "%s,%.2f,%.0f,%.0f,%.0f,%.0f", dtToStringCsv2(&thisSample->dateTime), thisSample->zenith, thisSample->groundGHI, thisSample->groundDNI, thisSample->groundDiffuse, thisSample->clearskyGHI);
-#endif
         for(columnIndex=fci->startModelsColumnNumber; columnIndex<fci->numColumnInfoEntries; columnIndex++) {        
-            hourIndex = fci->columnInfo[columnIndex].hourGroupIndex;
+            hourIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
             modelIndex = fci->columnInfo[columnIndex].modelIndex;
-#ifdef DUMP_ALL_DATA
-            fprintf(FilteredDataFp, ",%.1f", thisSample->hourGroup[hourIndex].modelGHI[modelIndex]);
-#endif
+            fprintf(FilteredDataFp, ",%.1f", thisSample->modelData[hourIndex].modelGHI[modelIndex]);
     }
-#ifdef DUMP_ALL_DATA
-        fprintf(FilteredDataFp, "\n");
+    fprintf(FilteredDataFp, "\n");
 #endif
-    }
     
     return True;
+}
+
+void studyData(forecastInputType *fci)
+{
+    timeSeriesType *thisSample;
+    modelStatsType *thisModelErr;
+    int i, columnIndex, modelIndex, hourIndex;
+    
+    for(i=0; i<fci->numTotalSamples; i++) {
+        thisSample = &(fci->timeSeries[fci->numTotalSamples - 1]);
+        for(columnIndex=fci->startModelsColumnNumber; columnIndex<fci->numColumnInfoEntries; columnIndex++) {            
+            if(thisSample->sunIsUp) {
+                hourIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
+                modelIndex = fci->columnInfo[columnIndex].modelIndex;
+                thisModelErr = &fci->hourErrorGroup[hourIndex].modelError[modelIndex];
+
+                if(thisSample->modelData[hourIndex].modelGHI[modelIndex] == -999) {
+                    fci->columnInfo[columnIndex].numMissing++;
+                }
+                else {
+                    fci->columnInfo[columnIndex].numGood++;
+                }
+            }
+        }
+    }
+    
+    fprintf(stderr, "======== Missing Data Analysis =========\n");
+    for(columnIndex=fci->startModelsColumnNumber; columnIndex<fci->numColumnInfoEntries; columnIndex++) { 
+        hourIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
+        modelIndex = fci->columnInfo[columnIndex].modelIndex;
+/*
+        if(fci->columnInfo[columnIndex].numGood < 1)
+            fci->columnInfo[columnIndex].percentMissing = 100;
+        else
+*/
+            fci->columnInfo[columnIndex].percentMissing = fci->columnInfo[columnIndex].numMissing/(fci->columnInfo[columnIndex].numMissing + fci->columnInfo[columnIndex].numGood) * 100.0;
+
+            if(fci->columnInfo[columnIndex].percentMissing > 90) {
+                fci->hourErrorGroup[hourIndex].modelError[modelIndex].missingData = True;
+                fprintf(stderr, "%s missing too much data -- disabling\n", fci->columnInfo[columnIndex].columnName);
+            }
+            else
+                fci->hourErrorGroup[hourIndex].modelError[modelIndex].missingData = False;
+        fprintf(stderr, "%s : column index = %d : model index = %d : hour index = %d : missing = %.0f%%\n", fci->columnInfo[columnIndex].columnName, columnIndex, fci->columnInfo[columnIndex].modelIndex, fci->columnInfo[columnIndex].hoursAheadIndex, fci->columnInfo[columnIndex].percentMissing);
+        
+        // disable models if percentMissing < threshold
+    }
+    fprintf(stderr, "========================================\n");   
 }
 /*
  
@@ -619,19 +682,29 @@ ecmwf_ghi_1                             ECMWF average GHI
 
 void initForecastInfo(forecastInputType *fci)
 {
+    int i;
+    size_t size;
+    
     fci->lat = -999;
     fci->lon = -999;
     fci->siteGroup = NULL;
     fci->siteName = NULL;
     fci->numModels = 0;
-    fci->numHourGroups = 0;
+    fci->nummodelDatas = 0;
     fci->numTotalSamples = 0;
     allocatedSamples = 8670 * MAX_MODELS;
-    fci->timeSeries = (timeSeriesType *) malloc(allocatedSamples * sizeof(timeSeriesType));
+    size = allocatedSamples * sizeof(timeSeriesType);
+    if((fci->timeSeries = (timeSeriesType *) malloc(size)) == NULL) {
+        FatalError("initForecastInfo()", "memory alloc error");
+    }
     fci->numColumnInfoEntries = 0;
     fci->numInputRecords = 0;
     fci->numDaylightRecords = 0;
 
+    for(i=0; i<MAX_HOURLY_SLOTS; i++) {
+        fci->hourErrorGroup[i].hoursAhead = -1;       
+    }
+    
     LineNumber = 0;
 }
 
@@ -644,11 +717,9 @@ void incrementTimeSeries(forecastInputType *fci)
     }
 }
 
-void initInputColumns(forecastInputType *fci)
+void scanHeaderLine(forecastInputType *fci)
 {
-    int i, hourIndex;
-    
-    //fci->numHourGroups = 15;       
+    //fci->nummodelDatas = 15;       
 /*
 [adk2]:/home/jim/mom> head -2 test-data-4-jim-desert-rock.2.csv | tail -1 | sed -e 's/,/\n/g' | grep ncep_NAM_hires_DSWRF_inst_
 ncep_NAM_hires_DSWRF_inst_1
@@ -666,49 +737,131 @@ ncep_NAM_hires_DSWRF_inst_18
 ncep_NAM_hires_DSWRF_inst_21
 ncep_NAM_hires_DSWRF_inst_24
 ncep_NAM_hires_DSWRF_inst_30
-*/
-
-    
+*/    
     // ground and satellite data columns
     fci->zenithCol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "sr_zen", "zenith angle", 0, -1, 0);
+    registerColumnInfo(fci, "sr_zen", "zenith angle", 0, 0);
     fci->groundGHICol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "sr_global", "ground GHI", 0, -1, 0);   
+    registerColumnInfo(fci, "sr_global", "ground GHI", 1, 0);   
     fci->groundDNICol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "sr_direct", "ground DNI", 0, -1, 0);   
+    registerColumnInfo(fci, "sr_direct", "ground DNI", 0, 0);   
     fci->groundDiffuseCol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "sr_diffuse", "ground diffuse", 0, -1, 0);   
+    registerColumnInfo(fci, "sr_diffuse", "ground diffuse", 0, 0);   
     fci->satGHICol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "sat_ghi", "sat model GHI", 0, -1, 0);   
+    registerColumnInfo(fci, "sat_ghi", "sat model GHI", 1, 0);   
     fci->clearskyGHICol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "clear_ghi", "clearsky GHI", 0, -1, 0);  
+    registerColumnInfo(fci, "clear_ghi", "clearsky GHI", 0, 0);  
     
     fci->startModelsColumnNumber = fci->numColumnInfoEntries;
 
     // this is where the forecast model data starts
     // right now you have to know the model names ahead of time
-    for(hourIndex=0; hourIndex<fci->numHourGroups; hourIndex++) {        
-        fci->numModels = 0;
-        //registerColumnInfo(fci, "ncep_RAP_DSWRF_", "NCEP RAP GHI", 18, hourIndex, 0);    
-        // ncep_HRRR_DSWRF_1	ncep_HRRR_LCDC_1	ncep_HRRR_HCDC_1	ncep_HRRR_TCDC_1	ncep_HRRR_MCDC_1
-        registerColumnInfo(fci, "ncep_HRRR_DSWRF_", "NCEP HRRR GHI", 15, hourIndex, 0);
-        registerColumnInfo(fci, "persistence_", "Persistence GHI", 168, hourIndex, 1);
-        registerColumnInfo(fci, "ncep_NAM_hires_DSWRF_inst_", "NAM Hi Res Instant GHI", 54, hourIndex, 0);		
-        registerColumnInfo(fci, "ncep_NAM_DSWRF_", "NAM Low Res Instant GHI", 78, hourIndex, 0);	
-        registerColumnInfo(fci, "ncep_GFS_sfc_DSWRF_surface_avg_", "GFS Hi Res Average GHI", 384, hourIndex, 0);		
-        registerColumnInfo(fci, "ncep_GFS_sfc_DSWRF_surface_inst_", "GFS Hi Res Instant GHI", 384, hourIndex, 0);		
-        registerColumnInfo(fci, "ncep_GFS_DSWRF_", "GFS Low res Average GHI", 372, hourIndex, 0);	
-        registerColumnInfo(fci, "NDFD_global_", "NDFD GHI", 144, hourIndex, 0);
-        registerColumnInfo(fci, "cm_", "Cloud motion GHI", 9, hourIndex, 0);
-        registerColumnInfo(fci, "ecmwf_ghi_", "ECMWF average GHI", 240, hourIndex, 0);        
+    fci->numModels = 0;
+    registerColumnInfo(fci, "ncep_RAP_DSWRF_", "NCEP RAP GHI", 0, 1);    
+    registerColumnInfo(fci, "ncep_HRRR_DSWRF_", "NCEP HRRR GHI", 0, 1);
+    registerColumnInfo(fci, "persistence_", "Persistence GHI", 1, 1);
+    registerColumnInfo(fci, "ncep_NAM_hires_DSWRF_inst_", "NAM Hi Res Instant GHI", 0, 1);		
+    registerColumnInfo(fci, "ncep_NAM_DSWRF_", "NAM Low Res Instant GHI", 0, 1);	
+    registerColumnInfo(fci, "ncep_GFS_sfc_DSWRF_surface_avg_", "GFS Hi Res Average GHI", 0, 1);		
+    registerColumnInfo(fci, "ncep_GFS_sfc_DSWRF_surface_inst_", "GFS Hi Res Instant GHI", 0, 1);		
+    registerColumnInfo(fci, "ncep_GFS_DSWRF_", "GFS Low res Average GHI", 0, 1);	
+    registerColumnInfo(fci, "NDFD_global_", "NDFD GHI", 0, 1);
+    registerColumnInfo(fci, "cm_", "Cloud motion GHI", 0, 1);
+    registerColumnInfo(fci, "ecmwf_ghi_", "ECMWF average GHI", 0, 1);        
+
+    if(fci->startHourLowIndex == -1) {
+        fci->startHourLowIndex = 0;
+        fci->startHourHighIndex = fci->nummodelDatas;
     }
 
-    for(i=0; i<fci->numColumnInfoEntries; i++)
-        fci->columnInfo[i].inputColumnNumber = -1;   // set default
-    
 }
 
-void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int maxHourAhead, int hourIndex, int isReference) 
+void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int isReference, int isForecast) 
+{
+    // We want to search the headerLine for columnName and see how far out it goes
+    // note that just because a measurement goes out to N hours ahead doesn't guarantee that there's 
+    // good data out there.  This may be a sticky issue.
+    static int numFields=-1, numGotModels=0;
+    static char *fields[MAX_FIELDS];
+    int i, hoursAhead, hoursAheadIndex=-1;
+    char tempColDesc[1024], tempHeader[MAX_FIELDS * 64], *p;    
+
+    if(numFields == -1) {
+        strcpy(tempHeader, fci->headerLine);
+        numFields = split(tempHeader, fields, MAX_FIELDS, Delimiter);  /* split line just once */   
+    }
+
+    if(isForecast) {
+        for(i=0; i<numFields; i++) {
+            if(strncasecmp(fields[i], columnName, strlen(columnName)) == 0) { /* got a hit */
+                p = fields[i] + strlen(fields[i]) - 1;
+                while(*p != '_' && p > fields[i]) p--;
+                p++;
+                hoursAhead = atoi(p);
+                hoursAheadIndex++;
+                fci->columnInfo[fci->numColumnInfoEntries].hoursAheadIndex = hoursAheadIndex;   // this is passed as an arg
+                fci->columnInfo[fci->numColumnInfoEntries].modelIndex = fci->numModels;
+                sprintf(tempColDesc, "%s +%d hours", columnDescription, hoursAhead); //fci->hourErrorGroup[hoursAheadIndex].hoursAhead);
+                fci->columnInfo[fci->numColumnInfoEntries].columnName = strdup(fields[i]); //"ncep_RAP_DSWRF_1";                      
+                fci->columnInfo[fci->numColumnInfoEntries].columnDescription = strdup(tempColDesc); //"NCEP RAP GHI";  
+                fci->columnInfo[fci->numColumnInfoEntries].maxhoursAhead = hoursAhead;  // this will keep increasing
+                fci->columnInfo[fci->numColumnInfoEntries].inputColumnNumber = i;  // this tells us the column numner of the input forecast table
+                
+                if(fci->hourErrorGroup[hoursAheadIndex].hoursAhead != -1) {
+                    if(fci->hourErrorGroup[hoursAheadIndex].hoursAhead != hoursAhead) {
+                        sprintf(ErrStr, "found inconsistency in number of hours ahead: for hours ahead index %d: it changed from %d hours to %d hours", hoursAheadIndex, fci->hourErrorGroup[hoursAheadIndex].hoursAhead, hoursAhead);
+                        FatalError("registerColumnInfo()", ErrStr);
+                    }
+                }
+                else
+                    fci->hourErrorGroup[hoursAheadIndex].hoursAhead = hoursAhead;
+                
+                // make hourErrorGroup links
+                fci->hourErrorGroup[hoursAheadIndex].modelError[fci->numModels].isReference = isReference;
+                fci->hourErrorGroup[hoursAheadIndex].modelError[fci->numModels].columnInfoIndex = fci->numColumnInfoEntries;
+                fci->hourErrorGroup[hoursAheadIndex].modelError[fci->numModels].columnName = fci->columnInfo[fci->numColumnInfoEntries].columnName;
+                fci->nummodelDatas = MAX(fci->nummodelDatas, hoursAheadIndex);  // the max hoursAheadIndex is the number of hour groups
+                fprintf(stderr, "registering %s, data col index = %d, input col = %d, hour index = %d\n", fields[i], fci->numColumnInfoEntries-1, i, hoursAheadIndex);
+                
+                numGotModels++;
+                fci->numColumnInfoEntries++;
+            } 
+        }
+        if(i == numFields && numGotModels == 0) {
+            sprintf(ErrStr, "model name %s not found in header line", columnName);
+            FatalError("registerColumnInfo()", ErrStr);
+        }
+        fci->numModels++;
+    }
+
+    // not a forecast but we still need to set a few things
+    else {
+        for(i=0; i<numFields; i++) {
+            if(strncasecmp(fields[i], columnName, strlen(columnName)) == 0) { /* got a hit */
+                numGotModels = 1;
+                fci->columnInfo[fci->numColumnInfoEntries].columnName = strdup(columnName); // ;                      
+                fci->columnInfo[fci->numColumnInfoEntries].columnDescription = strdup(columnDescription); //"NCEP RAP GHI";  
+                fci->columnInfo[fci->numColumnInfoEntries].maxhoursAhead = 0;
+                fci->columnInfo[fci->numColumnInfoEntries].hoursAheadIndex = -1;  
+                fci->columnInfo[fci->numColumnInfoEntries].modelIndex = -1;
+                fci->columnInfo[fci->numColumnInfoEntries].inputColumnNumber = i;  // this tells us the column numner of the input forecast table
+/*
+                fci->hourErrorGroup[0].modelError[fci->numModels].isReference = isReference;
+                fci->hourErrorGroup[0].modelError[fci->numModels].columnInfoIndex = fci->numColumnInfoEntries;
+                fci->hourErrorGroup[0].modelError[fci->numModels].columnName = fci->columnInfo[fci->numColumnInfoEntries].columnName;
+*/
+                fci->numColumnInfoEntries++;
+                fprintf(stderr, "registering non-model %s, data index = %d, hour index = %d, input col = %d\n", fields[i], fci->numColumnInfoEntries-1, hoursAheadIndex, i);
+            }
+        }
+        if(i == numFields && numGotModels == 0) {
+            sprintf(ErrStr, "measuremnet name %s not found in header line", columnName);
+            FatalError("registerColumnInfo()", ErrStr);
+        }
+    }
+}
+
+void oldregisterColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int maxhoursAhead, int hourIndex, int isReference) 
 {
     char tempColName[1024], tempColDesc[1024];    
     
@@ -717,21 +870,23 @@ void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDe
             return;
         
         fci->hourErrorGroup[hourIndex].modelError[fci->numModels].isReference = isReference;
-        fci->columnInfo[fci->numColumnInfoEntries].hourGroupIndex = hourIndex;   // this is passed as an arg
+        fci->columnInfo[fci->numColumnInfoEntries].hoursAheadIndex = hourIndex;   // this is passed as an arg
         fci->columnInfo[fci->numColumnInfoEntries].modelIndex = fci->numModels;
         sprintf(tempColName, "%s%d", columnName, fci->hourErrorGroup[hourIndex].hoursAhead);
         sprintf(tempColDesc, "%s +%d hours", columnDescription, fci->hourErrorGroup[hourIndex].hoursAhead);
         fci->columnInfo[fci->numColumnInfoEntries].columnName = strdup(tempColName); //"ncep_RAP_DSWRF_1";                      
         fci->columnInfo[fci->numColumnInfoEntries].columnDescription = strdup(tempColDesc); //"NCEP RAP GHI";  
-        fci->columnInfo[fci->numColumnInfoEntries].maxHourAhead = maxHourAhead;
+        fci->columnInfo[fci->numColumnInfoEntries].maxhoursAhead = maxhoursAhead;
+        fci->columnInfo[fci->numColumnInfoEntries].numGood = 0;
+        fci->columnInfo[fci->numColumnInfoEntries].numMissing = 0;
         fci->numColumnInfoEntries++;
         fci->numModels++;
     }
     else {
         fci->columnInfo[fci->numColumnInfoEntries].columnName = columnName; //"ncep_RAP_DSWRF_1";                      
         fci->columnInfo[fci->numColumnInfoEntries].columnDescription = columnDescription; //"NCEP RAP GHI";  
-        fci->columnInfo[fci->numColumnInfoEntries].maxHourAhead = maxHourAhead;
-        fci->columnInfo[fci->numColumnInfoEntries].hourGroupIndex = -1;  
+        fci->columnInfo[fci->numColumnInfoEntries].maxhoursAhead = maxhoursAhead;
+        fci->columnInfo[fci->numColumnInfoEntries].hoursAheadIndex = -1;  
         fci->columnInfo[fci->numColumnInfoEntries].modelIndex = -1;
         fci->numColumnInfoEntries++;
     }
@@ -741,7 +896,10 @@ int checkModelAgainstSite(forecastInputType *fci, char *modelName)
 {
     int modelNum;
     
+    //fprintf(stderr, "checking %s: number of models = %d\n", modelName, fci->thisSite->numModels);
+
     for(modelNum=0; modelNum<fci->thisSite->numModels; modelNum++) {
+        //fprintf(stderr, "checking %s against %s\n", modelName, fci->thisSite->modelNames[modelNum]);
         if(strcmp(modelName, fci->thisSite->modelNames[modelNum]) == 0) {
             return True;
         }
@@ -766,7 +924,12 @@ typedef struct {
     
     si = &fci->allSiteInfo[fci->numSites]; 
     registerSiteName(si, "Desert_Rock_NV");
-    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_RAP_DSWRF_", 18);
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_RAP_DSWRF_", 18); //
+    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_HRRR_DSWRF_", 18); // ncep_HRRR_DSWRF_
+//    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_HRRR_LCDC_", 18); // ncep_HRRR_DSWRF_
+//    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_HRRR_HCDC_", 18);
+//    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_HRRR_TCDC_", 18);
+//    registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_HRRR_MCDC_", 18);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "persistence_", 168);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_hires_DSWRF_inst_", 54);
     registerSiteModel(&fci->allSiteInfo[fci->numSites], "ncep_NAM_DSWRF_", 78);
@@ -878,22 +1041,24 @@ void registerSiteModel(siteType *si, char *modelName, int maxHoursAhead)
     si->numModels++;
 }
 
-void parseColumnInfo(forecastInputType *fci, char *colNamesLine)
+void parseColumnInfo(forecastInputType *fci)
 {
     int numFields;
     char *fields[MAX_FIELDS];
     int i, j, matches=0;
     
-    //fprintf(stderr, "Line:%s\n", colNamesLine);
+    //fprintf(stderr, "Line:%s\n", headerLine);
     
-    getNumberOfHoursAhead(fci, colNamesLine);
-    initInputColumns(fci);
-
-    numFields = split(colNamesLine, fields, MAX_FIELDS, Delimiter);  /* split line */   
+    scanHeaderLine(fci);
+    //getNumberOfHoursAhead(fci, headerLine);
+    
+    numFields = split(fci->headerLine, fields, MAX_FIELDS, Delimiter);  /* split line */   
     
     for(i=0; i<numFields; i++) {
-        //fprintf(stderr, "Checking column name %s...", fields[i]);
+        //fprintf(stderr, "Checking in column name %s...\n", fields[i]);
         for(j=0; j<fci->numColumnInfoEntries; j++) {
+            //fprintf(stderr, "%s\n", fci->columnInfo[j].columnName);
+
             if(strcasecmp(fields[i], fci->columnInfo[j].columnName) == 0) { // || strcasecmp(fields[i], fci->columnInfo[j].columnDescription) == 0) {
                 fci->columnInfo[j].inputColumnNumber = i;
                 //fprintf(stderr, "%s\n", fci->columnInfo[j].columnName);
@@ -901,16 +1066,16 @@ void parseColumnInfo(forecastInputType *fci, char *colNamesLine)
                 break;
             }
         }
-        //if(j == fci->numColumnInfoEntries) fprintf(stderr, "no match\n");
+        if(j == fci->numColumnInfoEntries) fprintf(stderr, "no match for %s...\n", fields[i]);
     }
 
     for(i=0; i<fci->numColumnInfoEntries; i++) {
         if(fci->columnInfo[i].modelIndex >= 0) {
-            fci->hourErrorGroup[fci->columnInfo[i].hourGroupIndex].modelError[fci->columnInfo[i].modelIndex].columnInfoIndex = i;
-            fci->hourErrorGroup[fci->columnInfo[i].hourGroupIndex].modelError[fci->columnInfo[i].modelIndex].columnName = fci->columnInfo[i].columnName;
+            fci->hourErrorGroup[fci->columnInfo[i].hoursAheadIndex].modelError[fci->columnInfo[i].modelIndex].columnInfoIndex = i;
+            fci->hourErrorGroup[fci->columnInfo[i].hoursAheadIndex].modelError[fci->columnInfo[i].modelIndex].columnName = fci->columnInfo[i].columnName;
         }
-        //fprintf(stderr, "[%d] col=%d, label=%s desc=\"%s\" modelnumber=%d hourGroup=%d\n", i, fci->columnInfo[i].inputColumnNumber, fci->columnInfo[i].columnName, fci->columnInfo[i].columnDescription,
-        //                fci->columnInfo[i].modelIndex, fci->columnInfo[i].hourGroupIndex);
+        //fprintf(stderr, "[%d] col=%d, label=%s desc=\"%s\" modelnumber=%d modelData=%d\n", i, fci->columnInfo[i].inputColumnNumber, fci->columnInfo[i].columnName, fci->columnInfo[i].columnDescription,
+        //                fci->columnInfo[i].modelIndex, fci->columnInfo[i].hoursAheadIndex);
     }
     
     for(i=0; i<fci->numColumnInfoEntries; i++) {
@@ -958,21 +1123,21 @@ void printByHour(forecastInputType *fci)
     FILE *fp;
     char fileName[1024];
     int modelIndex, hourIndex;
-    modelErrorType *hourGroup;
+    modelErrorType *modelData;
     modelStatsType *err;
          
     for(hourIndex=fci->startHourLowIndex; hourIndex <= fci->startHourHighIndex; hourIndex++) {
-        hourGroup = &fci->hourErrorGroup[hourIndex];
+        modelData = &fci->hourErrorGroup[hourIndex];
 
-        sprintf(fileName, "%s/%s.forecast.error.hoursAhead=%02d.csv", fci->outputDirectory, fci->siteName, hourGroup->hoursAhead);
-        //fprintf(stderr, "hour[%d] hour=%d file=%s\n", hourIndex, hourGroup->hoursAhead, fileName);
+        sprintf(fileName, "%s/%s.forecast.error.hoursAhead=%02d.csv", fci->outputDirectory, fci->siteName, modelData->hoursAhead);
+        //fprintf(stderr, "hour[%d] hour=%d file=%s\n", hourIndex, modelData->hoursAhead, fileName);
         fp = fopen(fileName, "w");
 
-        fprintf(fp, "#siteName=%s,lat=%.2f,lon=%.3f,hours ahead=%d,N=%d,mean measured GHI=%.1f\n",fci->siteName, fci->lat, fci->lon, hourGroup->hoursAhead, hourGroup->numValidSamples, hourGroup->meanMeasuredGHI);
+        fprintf(fp, "#siteName=%s,lat=%.2f,lon=%.3f,hours ahead=%d,N=%d,mean measured GHI=%.1f\n",fci->siteName, fci->lat, fci->lon, modelData->hoursAhead, modelData->numValidSamples, modelData->meanMeasuredGHI);
         fprintf(fp, "#model,sum( model-ground ), sum( abs(model-ground) ), sum( (model-ground)^2 ), mae, mae percent, mbe, mbe percent, rmse, rmse percent\n");
 
         for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-            err = &hourGroup->modelError[modelIndex];
+            err = &modelData->modelError[modelIndex];
             fprintf(fp, "%s,%.0f,%.0f,%.0f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", fci->columnInfo[err->columnInfoIndex].columnDescription, err->sumModel_Ground, err->sumAbs_Model_Ground, err->sumModel_Ground_2,
                             err->mae, err->maePct*100, err->mbe, err->mbePct*100, err->rmse, err->rmsePct*100);
         }
@@ -985,7 +1150,7 @@ void printByModel(forecastInputType *fci)
     FILE *fp;
     char fileName[1024];
     int modelIndex, hourIndex;
-    modelErrorType *hourGroup;
+    modelErrorType *modelData;
     modelStatsType *err;
     
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {   
@@ -997,11 +1162,11 @@ void printByModel(forecastInputType *fci)
         fprintf(fp, "#model,N,hours ahead, mean measured GHI, sum( model-ground ), sum( abs(model-ground) ), sum( (model-ground)^2 ), mae, mae percent, mbe, mbe percent, rmse, rmse percent\n");
 
             for(hourIndex=fci->startHourLowIndex; hourIndex <= fci->startHourHighIndex; hourIndex++) {
-                hourGroup = &fci->hourErrorGroup[hourIndex];
+                modelData = &fci->hourErrorGroup[hourIndex];
 
-                err = &hourGroup->modelError[modelIndex];
+                err = &modelData->modelError[modelIndex];
                 fprintf(fp, "%s,%d,%d,%.1f,%.0f,%.0f,%.0f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", fci->columnInfo[err->columnInfoIndex].columnDescription, 
-                    hourGroup->numValidSamples,fci->hourErrorGroup[hourIndex].hoursAhead,hourGroup->meanMeasuredGHI,err->sumModel_Ground, err->sumAbs_Model_Ground, err->sumModel_Ground_2,
+                    modelData->numValidSamples,fci->hourErrorGroup[hourIndex].hoursAhead,modelData->meanMeasuredGHI,err->sumModel_Ground, err->sumAbs_Model_Ground, err->sumModel_Ground_2,
                     err->mae, err->maePct*100, err->mbe, err->mbePct*100, err->rmse, err->rmsePct*100);
         }
         fclose(fp);
@@ -1012,17 +1177,17 @@ void printByAnalysisType(forecastInputType *fci)
 {
     FILE *fp;   
     int modelIndex, hourIndex;
-    modelErrorType *hourGroup;
+    modelErrorType *modelData;
     modelStatsType *err;
     
     if(!(fp = openErrorTypeFile(fci, "MAE")))
         return;
     
     for(hourIndex=fci->startHourLowIndex; hourIndex <= fci->startHourHighIndex; hourIndex++) {
-        hourGroup = &fci->hourErrorGroup[hourIndex];
-        fprintf(fp, "%d,%d", hourGroup->hoursAhead, hourGroup->numValidSamples);
+        modelData = &fci->hourErrorGroup[hourIndex];
+        fprintf(fp, "%d,%d", modelData->hoursAhead, modelData->numValidSamples);
         for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {          
-            err = &hourGroup->modelError[modelIndex];
+            err = &modelData->modelError[modelIndex];
             fprintf(fp, ",%.1f%%", err->maePct*100);
         }
         fprintf(fp, "\n");
@@ -1033,10 +1198,10 @@ void printByAnalysisType(forecastInputType *fci)
         return;
     
     for(hourIndex=fci->startHourLowIndex; hourIndex <= fci->startHourHighIndex; hourIndex++) {
-        hourGroup = &fci->hourErrorGroup[hourIndex];
-        fprintf(fp, "%d,%d", hourGroup->hoursAhead, hourGroup->numValidSamples);
+        modelData = &fci->hourErrorGroup[hourIndex];
+        fprintf(fp, "%d,%d", modelData->hoursAhead, modelData->numValidSamples);
         for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {          
-            err = &hourGroup->modelError[modelIndex];
+            err = &modelData->modelError[modelIndex];
             fprintf(fp, ",%.1f%%", err->mbePct*100);
         }
         fprintf(fp, "\n");
@@ -1047,10 +1212,10 @@ void printByAnalysisType(forecastInputType *fci)
         return;
     
     for(hourIndex=fci->startHourLowIndex; hourIndex <= fci->startHourHighIndex; hourIndex++) {
-        hourGroup = &fci->hourErrorGroup[hourIndex];
-        fprintf(fp, "%d,%d", hourGroup->hoursAhead, hourGroup->numValidSamples);
+        modelData = &fci->hourErrorGroup[hourIndex];
+        fprintf(fp, "%d,%d", modelData->hoursAhead, modelData->numValidSamples);
         for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {          
-            err = &hourGroup->modelError[modelIndex];
+            err = &modelData->modelError[modelIndex];
             fprintf(fp, ",%.1f%%", err->rmsePct*100);
         }
         fprintf(fp, "\n");
@@ -1062,17 +1227,17 @@ void printRmseTableHour(forecastInputType *fci, int hourIndex)
 {
     FILE *fp;   
     int modelIndex;
-    modelErrorType *hourGroup = &fci->hourErrorGroup[hourIndex];
+    modelErrorType *modelData = &fci->hourErrorGroup[hourIndex];
     
     if(!(fp = openErrorTypeFileHourly(fci, "RMSE", hourIndex)))
        return;
     //fp = stderr;
     
     //for(hourIndex=fci->startHourLowIndex; hourIndex <= fci->startHourHighIndex; hourIndex++) {
-        fprintf(fp, "hours ahead = %d\nN = %d\n", hourGroup->hoursAhead, hourGroup->numValidSamples);
+        fprintf(fp, "hours ahead = %d\nN = %d\n", modelData->hoursAhead, modelData->numValidSamples);
         for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {          
-            if(hourGroup->modelError[modelIndex].isActive)
-                fprintf(fp, "%-35s = %.1f%%\n", getGenericModelName(fci, modelIndex), hourGroup->modelError[modelIndex].rmsePct*100);
+            if(modelData->modelError[modelIndex].isActive)
+                fprintf(fp, "%-35s = %.1f%%\n", getGenericModelName(fci, modelIndex), modelData->modelError[modelIndex].rmsePct*100);
         }
         fprintf(fp, "\n");
     //}    
@@ -1085,7 +1250,7 @@ FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int ho
     static FILE *fp;
 //    int modelIndex;
     char satGHIerr[1024];
-//    modelErrorType *hourGroup = &fci->hourErrorGroup[hourIndex];
+//    modelErrorType *modelData = &fci->hourErrorGroup[hourIndex];
     
     if(fci->outputDirectory == NULL || fci->siteName == NULL) {
         fprintf(stderr, "openErrorTypeFile(): got null outputDirectory or siteName\n");
@@ -1108,7 +1273,7 @@ FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int ho
 /*
     fprintf(fp, "hours ahead,N,");
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++)  {
-        if(hourGroup->modelError[modelIndex].isActive)
+        if(modelData->modelError[modelIndex].isActive)
             fprintf(fp, "%s,", getGenericModelName(fci, modelIndex));
     }
     fprintf(fp, "\n");
@@ -1152,7 +1317,7 @@ FILE *openErrorTypeFile(forecastInputType *fci, char *analysisType)
 int getMaxHoursAhead(forecastInputType *fci, int modelIndex)
 {
     int columnIndex = fci->hourErrorGroup[0].modelError[modelIndex].columnInfoIndex;
-    return (fci->columnInfo[columnIndex].maxHourAhead);
+    return (fci->columnInfo[columnIndex].maxhoursAhead);
 }
 
 char *getGenericModelName(forecastInputType *fci, int modelIndex)
@@ -1174,7 +1339,7 @@ char *getColumnNameByHourModel(forecastInputType *fci, int hrInd, int modInd)
     
     // this should probably be solved in a data structure
     for(col=0; col<fci->numColumnInfoEntries; col++) {
-            if(fci->columnInfo[col].hourGroupIndex == hrInd && fci->columnInfo[col].modelIndex == modInd) {
+            if(fci->columnInfo[col].hoursAheadIndex == hrInd && fci->columnInfo[col].modelIndex == modInd) {
                 strcpy(modelDesc, fci->columnInfo[col].columnName);
                 modelDesc[strlen(modelDesc)-2] = '\0';
                 return modelDesc;
@@ -1220,21 +1385,21 @@ void getNumberOfHoursAhead(forecastInputType *fci, char *origLine)
         if(hour <= 0 || hour > 500)
             FatalError("getNumberOfHoursAhead()", "problem getting number of hours ahead");
 
-        //fprintf(stderr, "hour[%d] = %d\n", fci->numHourGroups, hour);
+        //fprintf(stderr, "hour[%d] = %d\n", fci->nummodelDatas, hour);
         
-        fci->hourErrorGroup[fci->numHourGroups].hoursAhead = hour;
-        fci->numHourGroups++;
+        fci->hourErrorGroup[fci->nummodelDatas].hoursAhead = hour;
+        fci->nummodelDatas++;
         
         currPtr = q+1;
     }
     
-    if(fci->numHourGroups < 3) {
+    if(fci->nummodelDatas < 3) {
         FatalError("getNumberOfHoursAhead()", "problem getting number of hours ahead");
     }
     
     if(fci->startHourLowIndex == -1) {
         fci->startHourLowIndex = 0;
-        fci->startHourHighIndex = fci->numHourGroups;
+        fci->startHourHighIndex = fci->nummodelDatas;
     }
     //free(copyLine);
 }
@@ -1351,18 +1516,18 @@ void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linen
     exit(exitCode);
 }
 
-#define getModelN(modelIndex) (modelIndex < 0 ? (hourGroup->satModelError.N) : (hourGroup->modelError[modelIndex].N))
+#define getModelN(modelIndex) (modelIndex < 0 ? (modelData->satModelError.N) : (modelData->modelError[modelIndex].N))
 
 void printHourlySummary(forecastInputType *fci, int hourIndex)
 {
     int modelIndex, hoursAhead = fci->hourErrorGroup[hourIndex].hoursAhead;
-    modelErrorType *hourGroup = &fci->hourErrorGroup[hourIndex];
+    modelErrorType *modelData = &fci->hourErrorGroup[hourIndex];
     
     fprintf(stderr, "\nHR%d=== Summary for hour %d (number of good samples) ===\n", hoursAhead, hoursAhead);
-    fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "N for group", hourGroup->numValidSamples);
-    fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "ground GHI", hourGroup->ground_N);
+    fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "N for group", modelData->numValidSamples);
+    fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "ground GHI", modelData->ground_N);
     for(modelIndex=-1; modelIndex < fci->numModels; modelIndex++) {
-        if(modelIndex < 0 || hourGroup->modelError[modelIndex].isActive)
+        if(modelIndex < 0 || modelData->modelError[modelIndex].isActive)
             fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, getGenericModelName(fci, modelIndex), getModelN(modelIndex));
     }
 }
@@ -1370,7 +1535,7 @@ void printHourlySummary(forecastInputType *fci, int hourIndex)
 void printSummaryCsv(forecastInputType *fci)
 {
     int hourIndex, modelIndex;
-    modelErrorType *hourGroup;
+    modelErrorType *modelData;
     char filename[1024], modelName[1024];
     FILE *fp;
     
@@ -1392,17 +1557,17 @@ void printSummaryCsv(forecastInputType *fci)
 
     // generate model results
     for(hourIndex=fci->startHourLowIndex; hourIndex <= fci->startHourHighIndex; hourIndex++) {
-        hourGroup = &fci->hourErrorGroup[hourIndex];
-        fprintf(fp, "%d,%d,%.2f,%.2f,%.2f,%ld,%ld", hourGroup->hoursAhead, hourGroup->numValidSamples, hourGroup->satModelError.rmsePct * 100,
-                hourGroup->optimizedRMSEphase1 * 100, hourGroup->optimizedRMSEphase2 * 100, hourGroup->phase1RMSEcalls, hourGroup->phase2RMSEcalls);
+        modelData = &fci->hourErrorGroup[hourIndex];
+        fprintf(fp, "%d,%d,%.2f,%.2f,%.2f,%ld,%ld", modelData->hoursAhead, modelData->numValidSamples, modelData->satModelError.rmsePct * 100,
+                modelData->optimizedRMSEphase1 * 100, modelData->optimizedRMSEphase2 * 100, modelData->phase1RMSEcalls, modelData->phase2RMSEcalls);
         for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {           
-            //if(hourGroup->modelError[modelIndex].isActive) {
-                fprintf(fp, ",%s", hourGroup->modelError[modelIndex].isReference ? "reference" : "forecast");
-                fprintf(fp, ",%s", hourGroup->modelError[modelIndex].isActive ? "active" : "inactive");
-                fprintf(fp, ",%d", hourGroup->modelError[modelIndex].isActive ? hourGroup->modelError[modelIndex].N : -999);
-                fprintf(fp, ",%.2f", hourGroup->modelError[modelIndex].isActive ? hourGroup->modelError[modelIndex].rmsePct * 100 : -999);
-                fprintf(fp, ",%.2f", hourGroup->modelError[modelIndex].isActive ? hourGroup->modelError[modelIndex].optimizedWeightPass1 : -999);   
-                fprintf(fp, ",%.2f", hourGroup->modelError[modelIndex].isActive ? hourGroup->modelError[modelIndex].optimizedWeightPass2 : -999);   
+            //if(modelData->modelError[modelIndex].isActive) {
+                fprintf(fp, ",%s", modelData->modelError[modelIndex].isReference ? "reference" : "forecast");
+                fprintf(fp, ",%s", modelData->modelError[modelIndex].isActive ? "active" : "inactive");
+                fprintf(fp, ",%d", modelData->modelError[modelIndex].isActive ? modelData->modelError[modelIndex].N : -999);
+                fprintf(fp, ",%.2f", modelData->modelError[modelIndex].isActive ? modelData->modelError[modelIndex].rmsePct * 100 : -999);
+                fprintf(fp, ",%.2f", modelData->modelError[modelIndex].isActive ? modelData->modelError[modelIndex].optimizedWeightPass1 : -999);   
+                fprintf(fp, ",%.2f", modelData->modelError[modelIndex].isActive ? modelData->modelError[modelIndex].optimizedWeightPass2 : -999);   
             //}
         }
         fprintf(fp, "\n");
@@ -1415,7 +1580,11 @@ int runWeightedTimeSeriesAnalysis(forecastInputType *fci, char *fileName)
 {
     
     initForecastInfo(fci);
+        fprintf(stderr, "fci->timeSeries[0] = %p\n", &fci->timeSeries[0]);
+
     initSiteInfo(fci);    
+        fprintf(stderr, "fci->timeSeries[0] = %p\n", &fci->timeSeries[0]);
+
     readForecastFile(fci, fileName);
 
     if(!readSummaryFile(fci)) 
@@ -1430,7 +1599,7 @@ int runWeightedTimeSeriesAnalysis(forecastInputType *fci, char *fileName)
 int readSummaryFile(forecastInputType *fci)
 {
     FILE *fp;
-    char line[LineLength], saveLine[LineLength];
+    char line[LINE_LENGTH], saveLine[LINE_LENGTH];
     char siteStr[256], latStr[256], lonStr[256];
     char *fields[MAX_FIELDS], *fldPtr;
     int numFields, i;
@@ -1449,7 +1618,7 @@ int readSummaryFile(forecastInputType *fci)
 
     // first comment line should look like this:
     // #site=Goodwin_Creek_MS lat=34.250 lon=-89.870
-    fgets(line, LineLength, fp);
+    fgets(line, LINE_LENGTH, fp);
     strcpy(saveLine, line);
     // split by space then by =
     numFields = split(line, fields, MAX_FIELDS, " ");  /* split line */
@@ -1497,7 +1666,7 @@ int readSummaryFile(forecastInputType *fci)
     // #hoursAhead,group N,sat RMSE,phase 1 RMSE,phase 2 RMSE,phase 1 RMSE calls,phase 2 RMSE calls,ncep_RAP_DSWRF model, ncep_RAP_DSWRF status,ncep_RAP_DSWRF N,ncep_RAP_DSWRF RMSE,ncep_RAP_DSWRF Weight 1,ncep_RAP_DSWRF weight 2,persistence model, persistence status,persistence N,persistence RMSE,persistence Weight 1,persistence weight 2,ncep_NAM_hires_DSWRF_inst model, ncep_NAM_hires_DSWRF_inst status,ncep_NAM_hires_DSWRF_inst N,ncep_NAM_hires_DSWRF_inst RMSE,ncep_NAM_hires_DSWRF_inst Weight 1,ncep_NAM_hires_DSWRF_inst weight 2,ncep_NAM_DSWRF model, ncep_NAM_DSWRF status,ncep_NAM_DSWRF N,ncep_NAM_DSWRF RMSE,ncep_NAM_DSWRF Weight 1,ncep_NAM_DSWRF weight 2,ncep_GFS_sfc_DSWRF_surface_avg model, ncep_GFS_sfc_DSWRF_surface_avg status,ncep_GFS_sfc_DSWRF_surface_avg N,ncep_GFS_sfc_DSWRF_surface_avg RMSE,ncep_GFS_sfc_DSWRF_surface_avg Weight 1,ncep_GFS_sfc_DSWRF_surface_avg weight 2,ncep_GFS_sfc_DSWRF_surface_inst model, ncep_GFS_sfc_DSWRF_surface_inst status,ncep_GFS_sfc_DSWRF_surface_inst N,ncep_GFS_sfc_DSWRF_surface_inst RMSE,ncep_GFS_sfc_DSWRF_surface_inst Weight 1,ncep_GFS_sfc_DSWRF_surface_inst weight 2,ncep_GFS_DSWRF model, ncep_GFS_DSWRF status,ncep_GFS_DSWRF N,ncep_GFS_DSWRF RMSE,ncep_GFS_DSWRF Weight 1,ncep_GFS_DSWRF weight 2,NDFD_global model, NDFD_global status,NDFD_global N,NDFD_global RMSE,NDFD_global Weight 1,NDFD_global weight 2,cm model, cm status,cm N,cm RMSE,cm Weight 1,cm weight 2,ecmwf_ghi model, ecmwf_ghi status,ecmwf_ghi N,ecmwf_ghi RMSE,ecmwf_ghi Weight 1,ecmwf_ghi weight 2
 
     char *headerLine = line+1;  // skip # char
-    fgets(headerLine, LineLength, fp);
+    fgets(headerLine, LINE_LENGTH, fp);
     
     numFields = split(line, fields, MAX_FIELDS, ",");  /* split line */
     
@@ -1511,9 +1680,9 @@ int readSummaryFile(forecastInputType *fci)
     
     LineNumber = 2;
 
-    //modelErrorType *hourGroup;
+    //modelErrorType *modelData;
     
-    while(fgets(line, LineLength, fp)) {
+    while(fgets(line, LINE_LENGTH, fp)) {
         LineNumber++; 
         
         numFields = split(line, fields, MAX_FIELDS, ",");  /* split line */  
@@ -1523,7 +1692,7 @@ int readSummaryFile(forecastInputType *fci)
         }
                       
         //int hoursAhead = atoi(fields[0]);
-        //hourGroup = &fci->hourErrorGroup[hourIndex];
+        //modelData = &fci->hourErrorGroup[hourIndex];
         
         // siteGroup
         fldPtr = fields[0];
@@ -1580,7 +1749,7 @@ void dumpWeightedTimeSeries(forecastInputType *fci,int hourIndex)
     int sampleInd, modelIndex;
     double weight, weightTotal;
     timeSeriesType *thisSample;
-    modelErrorType *hourGroup = &fci->hourErrorGroup[hourIndex];
+    modelErrorType *modelData = &fci->hourErrorGroup[hourIndex];
     modelStatsType *thisModelErr;
 
 /*
@@ -1596,9 +1765,9 @@ void dumpWeightedTimeSeries(forecastInputType *fci,int hourIndex)
             for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                 thisModelErr = &fci->hourErrorGroup[hourIndex].modelError[modelIndex];
                             
-                if(hourGroup->modelError[modelIndex].isActive) {
+                if(modelData->modelError[modelIndex].isActive) {
                     weight = thisModelErr->optimizedWeightPass2;
-                    thisSample->weightedModelGHI += (thisSample->hourGroup[hourIndex].modelGHI[modelIndex] * weight);
+                    thisSample->weightedModelGHI += (thisSample->modelData[hourIndex].modelGHI[modelIndex] * weight);
                     weightTotal += weight;            
                 }            
             }        
@@ -1609,3 +1778,1082 @@ void dumpWeightedTimeSeries(forecastInputType *fci,int hourIndex)
     }
 }
 
+/* 
+ For reference purposes, here's an exhaustive list of the column headers as of 2014-01-14:
+ 
+siteGroup
+siteName
+lat
+lon
+valid_time
+sr_zen
+sr_global
+sr_direct
+sr_diffuse
+sr_temp
+sr_wspd
+sr_rh
+lat
+lon
+validTime
+sat_ghi
+clear_ghi
+CosSolarZenithAngle
+ncep_RAP_DSWRF_1
+ncep_HRRR_DSWRF_1
+ncep_HRRR_LCDC_1
+ncep_HRRR_HCDC_1
+ncep_HRRR_TCDC_1
+ncep_HRRR_MCDC_1
+persistence_1
+ncep_NAM_hires_DSWRF_inst_1
+ncep_NAM_hires_CSDSF_1
+ncep_NAM_hires_LCDC_1
+ncep_NAM_hires_MCDC_1
+ncep_NAM_hires_HCDC_1
+ncep_NAM_hires_TCDC_1
+ncep_NAM_DSWRF_1
+ncep_NAM_TCDC_1
+ncep_NAM_flag_1
+ncep_GFS_sfc_DSWRF_surface_avg_1
+ncep_GFS_sfc_DSWRF_surface_inst_1
+ncep_GFS_sfc_TCDC_high_1
+ncep_GFS_sfc_TCDC_mid_1
+ncep_GFS_sfc_TCDC_low_1
+ncep_GFS_sfc_TCDC_total_1
+ncep_GFS_DSWRF_1
+ncep_GFS_TCDC_total_1
+ncep_GFS_flag_1
+NDFD_sky_1
+NDFD_global_1
+NDFD_flag_1
+cm_1
+ecmwf_ghi_1
+ecmwf_flag_1
+ecmwf_cloud_1
+ncep_RAP_DSWRF_2
+ncep_HRRR_DSWRF_2
+ncep_HRRR_LCDC_2
+ncep_HRRR_HCDC_2
+ncep_HRRR_TCDC_2
+ncep_HRRR_MCDC_2
+persistence_2
+ncep_NAM_hires_DSWRF_inst_2
+ncep_NAM_hires_CSDSF_2
+ncep_NAM_hires_LCDC_2
+ncep_NAM_hires_MCDC_2
+ncep_NAM_hires_HCDC_2
+ncep_NAM_hires_TCDC_2
+ncep_NAM_DSWRF_2
+ncep_NAM_TCDC_2
+ncep_NAM_flag_2
+ncep_GFS_sfc_DSWRF_surface_avg_2
+ncep_GFS_sfc_DSWRF_surface_inst_2
+ncep_GFS_sfc_TCDC_high_2
+ncep_GFS_sfc_TCDC_mid_2
+ncep_GFS_sfc_TCDC_low_2
+ncep_GFS_sfc_TCDC_total_2
+ncep_GFS_DSWRF_2
+ncep_GFS_TCDC_total_2
+ncep_GFS_flag_2
+NDFD_sky_2
+NDFD_global_2
+NDFD_flag_2
+cm_2
+ecmwf_ghi_2
+ecmwf_flag_2
+ecmwf_cloud_2
+ncep_RAP_DSWRF_3
+ncep_HRRR_DSWRF_3
+ncep_HRRR_LCDC_3
+ncep_HRRR_HCDC_3
+ncep_HRRR_TCDC_3
+ncep_HRRR_MCDC_3
+persistence_3
+ncep_NAM_hires_DSWRF_inst_3
+ncep_NAM_hires_CSDSF_3
+ncep_NAM_hires_LCDC_3
+ncep_NAM_hires_MCDC_3
+ncep_NAM_hires_HCDC_3
+ncep_NAM_hires_TCDC_3
+ncep_NAM_DSWRF_3
+ncep_NAM_TCDC_3
+ncep_NAM_flag_3
+ncep_GFS_sfc_DSWRF_surface_avg_3
+ncep_GFS_sfc_DSWRF_surface_inst_3
+ncep_GFS_sfc_TCDC_high_3
+ncep_GFS_sfc_TCDC_mid_3
+ncep_GFS_sfc_TCDC_low_3
+ncep_GFS_sfc_TCDC_total_3
+ncep_GFS_DSWRF_3
+ncep_GFS_TCDC_total_3
+ncep_GFS_flag_3
+NDFD_sky_3
+NDFD_global_3
+NDFD_flag_3
+cm_3
+ecmwf_ghi_3
+ecmwf_flag_3
+ecmwf_cloud_3
+ncep_RAP_DSWRF_4
+ncep_HRRR_DSWRF_4
+ncep_HRRR_LCDC_4
+ncep_HRRR_HCDC_4
+ncep_HRRR_TCDC_4
+ncep_HRRR_MCDC_4
+persistence_4
+ncep_NAM_hires_DSWRF_inst_4
+ncep_NAM_hires_CSDSF_4
+ncep_NAM_hires_LCDC_4
+ncep_NAM_hires_MCDC_4
+ncep_NAM_hires_HCDC_4
+ncep_NAM_hires_TCDC_4
+ncep_NAM_DSWRF_4
+ncep_NAM_TCDC_4
+ncep_NAM_flag_4
+ncep_GFS_sfc_DSWRF_surface_avg_4
+ncep_GFS_sfc_DSWRF_surface_inst_4
+ncep_GFS_sfc_TCDC_high_4
+ncep_GFS_sfc_TCDC_mid_4
+ncep_GFS_sfc_TCDC_low_4
+ncep_GFS_sfc_TCDC_total_4
+ncep_GFS_DSWRF_4
+ncep_GFS_TCDC_total_4
+ncep_GFS_flag_4
+NDFD_sky_4
+NDFD_global_4
+NDFD_flag_4
+cm_4
+ecmwf_ghi_4
+ecmwf_flag_4
+ecmwf_cloud_4
+ncep_RAP_DSWRF_5
+ncep_HRRR_DSWRF_5
+ncep_HRRR_LCDC_5
+ncep_HRRR_HCDC_5
+ncep_HRRR_TCDC_5
+ncep_HRRR_MCDC_5
+persistence_5
+ncep_NAM_hires_DSWRF_inst_5
+ncep_NAM_hires_CSDSF_5
+ncep_NAM_hires_LCDC_5
+ncep_NAM_hires_MCDC_5
+ncep_NAM_hires_HCDC_5
+ncep_NAM_hires_TCDC_5
+ncep_NAM_DSWRF_5
+ncep_NAM_TCDC_5
+ncep_NAM_flag_5
+ncep_GFS_sfc_DSWRF_surface_avg_5
+ncep_GFS_sfc_DSWRF_surface_inst_5
+ncep_GFS_sfc_TCDC_high_5
+ncep_GFS_sfc_TCDC_mid_5
+ncep_GFS_sfc_TCDC_low_5
+ncep_GFS_sfc_TCDC_total_5
+ncep_GFS_DSWRF_5
+ncep_GFS_TCDC_total_5
+ncep_GFS_flag_5
+NDFD_sky_5
+NDFD_global_5
+NDFD_flag_5
+cm_5
+ecmwf_ghi_5
+ecmwf_flag_5
+ecmwf_cloud_5
+ncep_RAP_DSWRF_6
+ncep_HRRR_DSWRF_6
+ncep_HRRR_LCDC_6
+ncep_HRRR_HCDC_6
+ncep_HRRR_TCDC_6
+ncep_HRRR_MCDC_6
+persistence_6
+ncep_NAM_hires_DSWRF_inst_6
+ncep_NAM_hires_CSDSF_6
+ncep_NAM_hires_LCDC_6
+ncep_NAM_hires_MCDC_6
+ncep_NAM_hires_HCDC_6
+ncep_NAM_hires_TCDC_6
+ncep_NAM_DSWRF_6
+ncep_NAM_TCDC_6
+ncep_NAM_flag_6
+ncep_GFS_sfc_DSWRF_surface_avg_6
+ncep_GFS_sfc_DSWRF_surface_inst_6
+ncep_GFS_sfc_TCDC_high_6
+ncep_GFS_sfc_TCDC_mid_6
+ncep_GFS_sfc_TCDC_low_6
+ncep_GFS_sfc_TCDC_total_6
+ncep_GFS_DSWRF_6
+ncep_GFS_TCDC_total_6
+ncep_GFS_flag_6
+NDFD_sky_6
+NDFD_global_6
+NDFD_flag_6
+cm_6
+ecmwf_ghi_6
+ecmwf_flag_6
+ecmwf_cloud_6
+ncep_RAP_DSWRF_7
+ncep_HRRR_DSWRF_7
+ncep_HRRR_LCDC_7
+ncep_HRRR_HCDC_7
+ncep_HRRR_TCDC_7
+ncep_HRRR_MCDC_7
+persistence_7
+ncep_NAM_hires_DSWRF_inst_7
+ncep_NAM_hires_CSDSF_7
+ncep_NAM_hires_LCDC_7
+ncep_NAM_hires_MCDC_7
+ncep_NAM_hires_HCDC_7
+ncep_NAM_hires_TCDC_7
+ncep_NAM_DSWRF_7
+ncep_NAM_TCDC_7
+ncep_NAM_flag_7
+ncep_GFS_sfc_DSWRF_surface_avg_7
+ncep_GFS_sfc_DSWRF_surface_inst_7
+ncep_GFS_sfc_TCDC_high_7
+ncep_GFS_sfc_TCDC_mid_7
+ncep_GFS_sfc_TCDC_low_7
+ncep_GFS_sfc_TCDC_total_7
+ncep_GFS_DSWRF_7
+ncep_GFS_TCDC_total_7
+ncep_GFS_flag_7
+NDFD_sky_7
+NDFD_global_7
+NDFD_flag_7
+cm_7
+ecmwf_ghi_7
+ecmwf_flag_7
+ecmwf_cloud_7
+ncep_RAP_DSWRF_8
+ncep_HRRR_DSWRF_8
+ncep_HRRR_LCDC_8
+ncep_HRRR_HCDC_8
+ncep_HRRR_TCDC_8
+ncep_HRRR_MCDC_8
+persistence_8
+ncep_NAM_hires_DSWRF_inst_8
+ncep_NAM_hires_CSDSF_8
+ncep_NAM_hires_LCDC_8
+ncep_NAM_hires_MCDC_8
+ncep_NAM_hires_HCDC_8
+ncep_NAM_hires_TCDC_8
+ncep_NAM_DSWRF_8
+ncep_NAM_TCDC_8
+ncep_NAM_flag_8
+ncep_GFS_sfc_DSWRF_surface_avg_8
+ncep_GFS_sfc_DSWRF_surface_inst_8
+ncep_GFS_sfc_TCDC_high_8
+ncep_GFS_sfc_TCDC_mid_8
+ncep_GFS_sfc_TCDC_low_8
+ncep_GFS_sfc_TCDC_total_8
+ncep_GFS_DSWRF_8
+ncep_GFS_TCDC_total_8
+ncep_GFS_flag_8
+NDFD_sky_8
+NDFD_global_8
+NDFD_flag_8
+cm_8
+ecmwf_ghi_8
+ecmwf_flag_8
+ecmwf_cloud_8
+ncep_RAP_DSWRF_9
+ncep_HRRR_DSWRF_9
+ncep_HRRR_LCDC_9
+ncep_HRRR_HCDC_9
+ncep_HRRR_TCDC_9
+ncep_HRRR_MCDC_9
+persistence_9
+ncep_NAM_hires_DSWRF_inst_9
+ncep_NAM_hires_CSDSF_9
+ncep_NAM_hires_LCDC_9
+ncep_NAM_hires_MCDC_9
+ncep_NAM_hires_HCDC_9
+ncep_NAM_hires_TCDC_9
+ncep_NAM_DSWRF_9
+ncep_NAM_TCDC_9
+ncep_NAM_flag_9
+ncep_GFS_sfc_DSWRF_surface_avg_9
+ncep_GFS_sfc_DSWRF_surface_inst_9
+ncep_GFS_sfc_TCDC_high_9
+ncep_GFS_sfc_TCDC_mid_9
+ncep_GFS_sfc_TCDC_low_9
+ncep_GFS_sfc_TCDC_total_9
+ncep_GFS_DSWRF_9
+ncep_GFS_TCDC_total_9
+ncep_GFS_flag_9
+NDFD_sky_9
+NDFD_global_9
+NDFD_flag_9
+cm_9
+ecmwf_ghi_9
+ecmwf_flag_9
+ecmwf_cloud_9
+ncep_RAP_DSWRF_12
+ncep_HRRR_DSWRF_12
+ncep_HRRR_LCDC_12
+ncep_HRRR_HCDC_12
+ncep_HRRR_TCDC_12
+ncep_HRRR_MCDC_12
+persistence_12
+ncep_NAM_hires_DSWRF_inst_12
+ncep_NAM_hires_CSDSF_12
+ncep_NAM_hires_LCDC_12
+ncep_NAM_hires_MCDC_12
+ncep_NAM_hires_HCDC_12
+ncep_NAM_hires_TCDC_12
+ncep_NAM_DSWRF_12
+ncep_NAM_TCDC_12
+ncep_NAM_flag_12
+ncep_GFS_sfc_DSWRF_surface_avg_12
+ncep_GFS_sfc_DSWRF_surface_inst_12
+ncep_GFS_sfc_TCDC_high_12
+ncep_GFS_sfc_TCDC_mid_12
+ncep_GFS_sfc_TCDC_low_12
+ncep_GFS_sfc_TCDC_total_12
+ncep_GFS_DSWRF_12
+ncep_GFS_TCDC_total_12
+ncep_GFS_flag_12
+NDFD_sky_12
+NDFD_global_12
+NDFD_flag_12
+ecmwf_ghi_12
+ecmwf_flag_12
+ecmwf_cloud_12
+ncep_RAP_DSWRF_15
+ncep_HRRR_DSWRF_15
+ncep_HRRR_LCDC_15
+ncep_HRRR_HCDC_15
+ncep_HRRR_TCDC_15
+ncep_HRRR_MCDC_15
+persistence_15
+ncep_NAM_hires_DSWRF_inst_15
+ncep_NAM_hires_CSDSF_15
+ncep_NAM_hires_LCDC_15
+ncep_NAM_hires_MCDC_15
+ncep_NAM_hires_HCDC_15
+ncep_NAM_hires_TCDC_15
+ncep_NAM_DSWRF_15
+ncep_NAM_TCDC_15
+ncep_NAM_flag_15
+ncep_GFS_sfc_DSWRF_surface_avg_15
+ncep_GFS_sfc_DSWRF_surface_inst_15
+ncep_GFS_sfc_TCDC_high_15
+ncep_GFS_sfc_TCDC_mid_15
+ncep_GFS_sfc_TCDC_low_15
+ncep_GFS_sfc_TCDC_total_15
+ncep_GFS_DSWRF_15
+ncep_GFS_TCDC_total_15
+ncep_GFS_flag_15
+NDFD_sky_15
+NDFD_global_15
+NDFD_flag_15
+ecmwf_ghi_15
+ecmwf_flag_15
+ecmwf_cloud_15
+ncep_RAP_DSWRF_18
+persistence_18
+ncep_NAM_hires_DSWRF_inst_18
+ncep_NAM_hires_CSDSF_18
+ncep_NAM_hires_LCDC_18
+ncep_NAM_hires_MCDC_18
+ncep_NAM_hires_HCDC_18
+ncep_NAM_hires_TCDC_18
+ncep_NAM_DSWRF_18
+ncep_NAM_TCDC_18
+ncep_NAM_flag_18
+ncep_GFS_sfc_DSWRF_surface_avg_18
+ncep_GFS_sfc_DSWRF_surface_inst_18
+ncep_GFS_sfc_TCDC_high_18
+ncep_GFS_sfc_TCDC_mid_18
+ncep_GFS_sfc_TCDC_low_18
+ncep_GFS_sfc_TCDC_total_18
+ncep_GFS_DSWRF_18
+ncep_GFS_TCDC_total_18
+ncep_GFS_flag_18
+NDFD_sky_18
+NDFD_global_18
+NDFD_flag_18
+ecmwf_ghi_18
+ecmwf_flag_18
+ecmwf_cloud_18
+persistence_21
+ncep_NAM_hires_DSWRF_inst_21
+ncep_NAM_hires_CSDSF_21
+ncep_NAM_hires_LCDC_21
+ncep_NAM_hires_MCDC_21
+ncep_NAM_hires_HCDC_21
+ncep_NAM_hires_TCDC_21
+ncep_NAM_DSWRF_21
+ncep_NAM_TCDC_21
+ncep_NAM_flag_21
+ncep_GFS_sfc_DSWRF_surface_avg_21
+ncep_GFS_sfc_DSWRF_surface_inst_21
+ncep_GFS_sfc_TCDC_high_21
+ncep_GFS_sfc_TCDC_mid_21
+ncep_GFS_sfc_TCDC_low_21
+ncep_GFS_sfc_TCDC_total_21
+ncep_GFS_DSWRF_21
+ncep_GFS_TCDC_total_21
+ncep_GFS_flag_21
+NDFD_sky_21
+NDFD_global_21
+NDFD_flag_21
+ecmwf_ghi_21
+ecmwf_flag_21
+ecmwf_cloud_21
+persistence_24
+ncep_NAM_hires_DSWRF_inst_24
+ncep_NAM_hires_CSDSF_24
+ncep_NAM_hires_LCDC_24
+ncep_NAM_hires_MCDC_24
+ncep_NAM_hires_HCDC_24
+ncep_NAM_hires_TCDC_24
+ncep_NAM_DSWRF_24
+ncep_NAM_TCDC_24
+ncep_NAM_flag_24
+ncep_GFS_sfc_DSWRF_surface_avg_24
+ncep_GFS_sfc_DSWRF_surface_inst_24
+ncep_GFS_sfc_TCDC_high_24
+ncep_GFS_sfc_TCDC_mid_24
+ncep_GFS_sfc_TCDC_low_24
+ncep_GFS_sfc_TCDC_total_24
+ncep_GFS_DSWRF_24
+ncep_GFS_TCDC_total_24
+ncep_GFS_flag_24
+NDFD_sky_24
+NDFD_global_24
+NDFD_flag_24
+ecmwf_ghi_24
+ecmwf_flag_24
+ecmwf_cloud_24
+persistence_30
+ncep_NAM_hires_DSWRF_inst_30
+ncep_NAM_hires_CSDSF_30
+ncep_NAM_hires_LCDC_30
+ncep_NAM_hires_MCDC_30
+ncep_NAM_hires_HCDC_30
+ncep_NAM_hires_TCDC_30
+ncep_NAM_DSWRF_30
+ncep_NAM_TCDC_30
+ncep_NAM_flag_30
+ncep_GFS_sfc_DSWRF_surface_avg_30
+ncep_GFS_sfc_DSWRF_surface_inst_30
+ncep_GFS_sfc_TCDC_high_30
+ncep_GFS_sfc_TCDC_mid_30
+ncep_GFS_sfc_TCDC_low_30
+ncep_GFS_sfc_TCDC_total_30
+ncep_GFS_DSWRF_30
+ncep_GFS_TCDC_total_30
+ncep_GFS_flag_30
+NDFD_sky_30
+NDFD_global_30
+NDFD_flag_30
+ecmwf_ghi_30
+ecmwf_flag_30
+ecmwf_cloud_30
+persistence_36
+ncep_NAM_hires_DSWRF_inst_36
+ncep_NAM_hires_CSDSF_36
+ncep_NAM_hires_LCDC_36
+ncep_NAM_hires_MCDC_36
+ncep_NAM_hires_HCDC_36
+ncep_NAM_hires_TCDC_36
+ncep_NAM_DSWRF_36
+ncep_NAM_TCDC_36
+ncep_NAM_flag_36
+ncep_GFS_sfc_DSWRF_surface_avg_36
+ncep_GFS_sfc_DSWRF_surface_inst_36
+ncep_GFS_sfc_TCDC_high_36
+ncep_GFS_sfc_TCDC_mid_36
+ncep_GFS_sfc_TCDC_low_36
+ncep_GFS_sfc_TCDC_total_36
+ncep_GFS_DSWRF_36
+ncep_GFS_TCDC_total_36
+ncep_GFS_flag_36
+NDFD_sky_36
+NDFD_global_36
+NDFD_flag_36
+ecmwf_ghi_36
+ecmwf_flag_36
+ecmwf_cloud_36
+persistence_42
+ncep_NAM_hires_DSWRF_inst_42
+ncep_NAM_hires_CSDSF_42
+ncep_NAM_hires_LCDC_42
+ncep_NAM_hires_MCDC_42
+ncep_NAM_hires_HCDC_42
+ncep_NAM_hires_TCDC_42
+ncep_NAM_DSWRF_42
+ncep_NAM_TCDC_42
+ncep_NAM_flag_42
+ncep_GFS_sfc_DSWRF_surface_avg_42
+ncep_GFS_sfc_DSWRF_surface_inst_42
+ncep_GFS_sfc_TCDC_high_42
+ncep_GFS_sfc_TCDC_mid_42
+ncep_GFS_sfc_TCDC_low_42
+ncep_GFS_sfc_TCDC_total_42
+ncep_GFS_DSWRF_42
+ncep_GFS_TCDC_total_42
+ncep_GFS_flag_42
+NDFD_sky_42
+NDFD_global_42
+NDFD_flag_42
+ecmwf_ghi_42
+ecmwf_flag_42
+ecmwf_cloud_42
+persistence_48
+ncep_NAM_hires_DSWRF_inst_48
+ncep_NAM_hires_CSDSF_48
+ncep_NAM_hires_LCDC_48
+ncep_NAM_hires_MCDC_48
+ncep_NAM_hires_HCDC_48
+ncep_NAM_hires_TCDC_48
+ncep_NAM_DSWRF_48
+ncep_NAM_TCDC_48
+ncep_NAM_flag_48
+ncep_GFS_sfc_DSWRF_surface_avg_48
+ncep_GFS_sfc_DSWRF_surface_inst_48
+ncep_GFS_sfc_TCDC_high_48
+ncep_GFS_sfc_TCDC_mid_48
+ncep_GFS_sfc_TCDC_low_48
+ncep_GFS_sfc_TCDC_total_48
+ncep_GFS_DSWRF_48
+ncep_GFS_TCDC_total_48
+ncep_GFS_flag_48
+NDFD_sky_48
+NDFD_global_48
+NDFD_flag_48
+ecmwf_ghi_48
+ecmwf_flag_48
+ecmwf_cloud_48
+persistence_54
+ncep_NAM_hires_DSWRF_inst_54
+ncep_NAM_hires_CSDSF_54
+ncep_NAM_hires_LCDC_54
+ncep_NAM_hires_MCDC_54
+ncep_NAM_hires_HCDC_54
+ncep_NAM_hires_TCDC_54
+ncep_NAM_DSWRF_54
+ncep_NAM_TCDC_54
+ncep_NAM_flag_54
+ncep_GFS_sfc_DSWRF_surface_avg_54
+ncep_GFS_sfc_DSWRF_surface_inst_54
+ncep_GFS_sfc_TCDC_high_54
+ncep_GFS_sfc_TCDC_mid_54
+ncep_GFS_sfc_TCDC_low_54
+ncep_GFS_sfc_TCDC_total_54
+ncep_GFS_DSWRF_54
+ncep_GFS_TCDC_total_54
+ncep_GFS_flag_54
+NDFD_sky_54
+NDFD_global_54
+NDFD_flag_54
+ecmwf_ghi_54
+ecmwf_flag_54
+ecmwf_cloud_54
+persistence_60
+ncep_NAM_hires_DSWRF_inst_60
+ncep_NAM_hires_CSDSF_60
+ncep_NAM_hires_LCDC_60
+ncep_NAM_hires_MCDC_60
+ncep_NAM_hires_HCDC_60
+ncep_NAM_hires_TCDC_60
+ncep_NAM_DSWRF_60
+ncep_NAM_TCDC_60
+ncep_NAM_flag_60
+ncep_GFS_sfc_DSWRF_surface_avg_60
+ncep_GFS_sfc_DSWRF_surface_inst_60
+ncep_GFS_sfc_TCDC_high_60
+ncep_GFS_sfc_TCDC_mid_60
+ncep_GFS_sfc_TCDC_low_60
+ncep_GFS_sfc_TCDC_total_60
+ncep_GFS_DSWRF_60
+ncep_GFS_TCDC_total_60
+ncep_GFS_flag_60
+NDFD_sky_60
+NDFD_global_60
+NDFD_flag_60
+ecmwf_ghi_60
+ecmwf_flag_60
+ecmwf_cloud_60
+persistence_66
+ncep_NAM_DSWRF_66
+ncep_NAM_TCDC_66
+ncep_NAM_flag_66
+ncep_GFS_sfc_DSWRF_surface_avg_66
+ncep_GFS_sfc_DSWRF_surface_inst_66
+ncep_GFS_sfc_TCDC_high_66
+ncep_GFS_sfc_TCDC_mid_66
+ncep_GFS_sfc_TCDC_low_66
+ncep_GFS_sfc_TCDC_total_66
+ncep_GFS_DSWRF_66
+ncep_GFS_TCDC_total_66
+ncep_GFS_flag_66
+NDFD_sky_66
+NDFD_global_66
+NDFD_flag_66
+ecmwf_ghi_66
+ecmwf_flag_66
+ecmwf_cloud_66
+persistence_72
+ncep_NAM_DSWRF_72
+ncep_NAM_TCDC_72
+ncep_NAM_flag_72
+ncep_GFS_sfc_DSWRF_surface_avg_72
+ncep_GFS_sfc_DSWRF_surface_inst_72
+ncep_GFS_sfc_TCDC_high_72
+ncep_GFS_sfc_TCDC_mid_72
+ncep_GFS_sfc_TCDC_low_72
+ncep_GFS_sfc_TCDC_total_72
+ncep_GFS_DSWRF_72
+ncep_GFS_TCDC_total_72
+ncep_GFS_flag_72
+NDFD_sky_72
+NDFD_global_72
+NDFD_flag_72
+ecmwf_ghi_72
+ecmwf_flag_72
+ecmwf_cloud_72
+persistence_78
+ncep_NAM_DSWRF_78
+ncep_NAM_TCDC_78
+ncep_NAM_flag_78
+ncep_GFS_sfc_DSWRF_surface_avg_78
+ncep_GFS_sfc_DSWRF_surface_inst_78
+ncep_GFS_sfc_TCDC_high_78
+ncep_GFS_sfc_TCDC_mid_78
+ncep_GFS_sfc_TCDC_low_78
+ncep_GFS_sfc_TCDC_total_78
+ncep_GFS_DSWRF_78
+ncep_GFS_TCDC_total_78
+ncep_GFS_flag_78
+NDFD_sky_78
+NDFD_global_78
+NDFD_flag_78
+ecmwf_ghi_78
+ecmwf_flag_78
+ecmwf_cloud_78
+persistence_84
+ncep_NAM_DSWRF_84
+ncep_NAM_TCDC_84
+ncep_NAM_flag_84
+ncep_GFS_sfc_DSWRF_surface_avg_84
+ncep_GFS_sfc_DSWRF_surface_inst_84
+ncep_GFS_sfc_TCDC_high_84
+ncep_GFS_sfc_TCDC_mid_84
+ncep_GFS_sfc_TCDC_low_84
+ncep_GFS_sfc_TCDC_total_84
+ncep_GFS_DSWRF_84
+ncep_GFS_TCDC_total_84
+ncep_GFS_flag_84
+NDFD_sky_84
+NDFD_global_84
+NDFD_flag_84
+ecmwf_ghi_84
+ecmwf_flag_84
+ecmwf_cloud_84
+persistence_90
+ncep_GFS_sfc_DSWRF_surface_avg_90
+ncep_GFS_sfc_DSWRF_surface_inst_90
+ncep_GFS_sfc_TCDC_high_90
+ncep_GFS_sfc_TCDC_mid_90
+ncep_GFS_sfc_TCDC_low_90
+ncep_GFS_sfc_TCDC_total_90
+ncep_GFS_DSWRF_90
+ncep_GFS_TCDC_total_90
+ncep_GFS_flag_90
+NDFD_sky_90
+NDFD_global_90
+NDFD_flag_90
+ecmwf_ghi_90
+ecmwf_flag_90
+ecmwf_cloud_90
+persistence_96
+ncep_GFS_sfc_DSWRF_surface_avg_96
+ncep_GFS_sfc_DSWRF_surface_inst_96
+ncep_GFS_sfc_TCDC_high_96
+ncep_GFS_sfc_TCDC_mid_96
+ncep_GFS_sfc_TCDC_low_96
+ncep_GFS_sfc_TCDC_total_96
+ncep_GFS_DSWRF_96
+ncep_GFS_TCDC_total_96
+ncep_GFS_flag_96
+NDFD_sky_96
+NDFD_global_96
+NDFD_flag_96
+ecmwf_ghi_96
+ecmwf_flag_96
+ecmwf_cloud_96
+persistence_102
+ncep_GFS_sfc_DSWRF_surface_avg_102
+ncep_GFS_sfc_DSWRF_surface_inst_102
+ncep_GFS_sfc_TCDC_high_102
+ncep_GFS_sfc_TCDC_mid_102
+ncep_GFS_sfc_TCDC_low_102
+ncep_GFS_sfc_TCDC_total_102
+ncep_GFS_DSWRF_102
+ncep_GFS_TCDC_total_102
+ncep_GFS_flag_102
+NDFD_sky_102
+NDFD_global_102
+NDFD_flag_102
+ecmwf_ghi_102
+ecmwf_flag_102
+ecmwf_cloud_102
+persistence_108
+ncep_GFS_sfc_DSWRF_surface_avg_108
+ncep_GFS_sfc_DSWRF_surface_inst_108
+ncep_GFS_sfc_TCDC_high_108
+ncep_GFS_sfc_TCDC_mid_108
+ncep_GFS_sfc_TCDC_low_108
+ncep_GFS_sfc_TCDC_total_108
+ncep_GFS_DSWRF_108
+ncep_GFS_TCDC_total_108
+ncep_GFS_flag_108
+NDFD_sky_108
+NDFD_global_108
+NDFD_flag_108
+ecmwf_ghi_108
+ecmwf_flag_108
+ecmwf_cloud_108
+persistence_114
+ncep_GFS_sfc_DSWRF_surface_avg_114
+ncep_GFS_sfc_DSWRF_surface_inst_114
+ncep_GFS_sfc_TCDC_high_114
+ncep_GFS_sfc_TCDC_mid_114
+ncep_GFS_sfc_TCDC_low_114
+ncep_GFS_sfc_TCDC_total_114
+ncep_GFS_DSWRF_114
+ncep_GFS_TCDC_total_114
+ncep_GFS_flag_114
+NDFD_sky_114
+NDFD_global_114
+NDFD_flag_114
+ecmwf_ghi_114
+ecmwf_flag_114
+ecmwf_cloud_114
+persistence_120
+ncep_GFS_sfc_DSWRF_surface_avg_120
+ncep_GFS_sfc_DSWRF_surface_inst_120
+ncep_GFS_sfc_TCDC_high_120
+ncep_GFS_sfc_TCDC_mid_120
+ncep_GFS_sfc_TCDC_low_120
+ncep_GFS_sfc_TCDC_total_120
+ncep_GFS_DSWRF_120
+ncep_GFS_TCDC_total_120
+ncep_GFS_flag_120
+NDFD_sky_120
+NDFD_global_120
+NDFD_flag_120
+ecmwf_ghi_120
+ecmwf_flag_120
+ecmwf_cloud_120
+persistence_126
+ncep_GFS_sfc_DSWRF_surface_avg_126
+ncep_GFS_sfc_DSWRF_surface_inst_126
+ncep_GFS_sfc_TCDC_high_126
+ncep_GFS_sfc_TCDC_mid_126
+ncep_GFS_sfc_TCDC_low_126
+ncep_GFS_sfc_TCDC_total_126
+ncep_GFS_DSWRF_126
+ncep_GFS_TCDC_total_126
+ncep_GFS_flag_126
+NDFD_sky_126
+NDFD_global_126
+NDFD_flag_126
+ecmwf_ghi_126
+ecmwf_flag_126
+ecmwf_cloud_126
+persistence_132
+ncep_GFS_sfc_DSWRF_surface_avg_132
+ncep_GFS_sfc_DSWRF_surface_inst_132
+ncep_GFS_sfc_TCDC_high_132
+ncep_GFS_sfc_TCDC_mid_132
+ncep_GFS_sfc_TCDC_low_132
+ncep_GFS_sfc_TCDC_total_132
+ncep_GFS_DSWRF_132
+ncep_GFS_TCDC_total_132
+ncep_GFS_flag_132
+NDFD_sky_132
+NDFD_global_132
+NDFD_flag_132
+ecmwf_ghi_132
+ecmwf_flag_132
+ecmwf_cloud_132
+persistence_138
+ncep_GFS_sfc_DSWRF_surface_avg_138
+ncep_GFS_sfc_DSWRF_surface_inst_138
+ncep_GFS_sfc_TCDC_high_138
+ncep_GFS_sfc_TCDC_mid_138
+ncep_GFS_sfc_TCDC_low_138
+ncep_GFS_sfc_TCDC_total_138
+ncep_GFS_DSWRF_138
+ncep_GFS_TCDC_total_138
+ncep_GFS_flag_138
+NDFD_sky_138
+NDFD_global_138
+NDFD_flag_138
+ecmwf_ghi_138
+ecmwf_flag_138
+ecmwf_cloud_138
+persistence_144
+ncep_GFS_sfc_DSWRF_surface_avg_144
+ncep_GFS_sfc_DSWRF_surface_inst_144
+ncep_GFS_sfc_TCDC_high_144
+ncep_GFS_sfc_TCDC_mid_144
+ncep_GFS_sfc_TCDC_low_144
+ncep_GFS_sfc_TCDC_total_144
+ncep_GFS_DSWRF_144
+ncep_GFS_TCDC_total_144
+ncep_GFS_flag_144
+NDFD_sky_144
+NDFD_global_144
+NDFD_flag_144
+ecmwf_ghi_144
+ecmwf_flag_144
+ecmwf_cloud_144
+persistence_150
+ncep_GFS_sfc_DSWRF_surface_avg_150
+ncep_GFS_sfc_DSWRF_surface_inst_150
+ncep_GFS_sfc_TCDC_high_150
+ncep_GFS_sfc_TCDC_mid_150
+ncep_GFS_sfc_TCDC_low_150
+ncep_GFS_sfc_TCDC_total_150
+ncep_GFS_DSWRF_150
+ncep_GFS_TCDC_total_150
+ncep_GFS_flag_150
+NDFD_sky_150
+NDFD_global_150
+NDFD_flag_150
+ecmwf_ghi_150
+ecmwf_flag_150
+ecmwf_cloud_150
+persistence_156
+ncep_GFS_sfc_DSWRF_surface_avg_156
+ncep_GFS_sfc_DSWRF_surface_inst_156
+ncep_GFS_sfc_TCDC_high_156
+ncep_GFS_sfc_TCDC_mid_156
+ncep_GFS_sfc_TCDC_low_156
+ncep_GFS_sfc_TCDC_total_156
+ncep_GFS_DSWRF_156
+ncep_GFS_TCDC_total_156
+ncep_GFS_flag_156
+NDFD_sky_156
+NDFD_global_156
+NDFD_flag_156
+ecmwf_ghi_156
+ecmwf_flag_156
+ecmwf_cloud_156
+persistence_162
+ncep_GFS_sfc_DSWRF_surface_avg_162
+ncep_GFS_sfc_DSWRF_surface_inst_162
+ncep_GFS_sfc_TCDC_high_162
+ncep_GFS_sfc_TCDC_mid_162
+ncep_GFS_sfc_TCDC_low_162
+ncep_GFS_sfc_TCDC_total_162
+ncep_GFS_DSWRF_162
+ncep_GFS_TCDC_total_162
+ncep_GFS_flag_162
+NDFD_sky_162
+NDFD_global_162
+NDFD_flag_162
+ecmwf_ghi_162
+ecmwf_flag_162
+ecmwf_cloud_162
+persistence_168
+ncep_GFS_sfc_DSWRF_surface_avg_168
+ncep_GFS_sfc_DSWRF_surface_inst_168
+ncep_GFS_sfc_TCDC_high_168
+ncep_GFS_sfc_TCDC_mid_168
+ncep_GFS_sfc_TCDC_low_168
+ncep_GFS_sfc_TCDC_total_168
+ncep_GFS_DSWRF_168
+ncep_GFS_TCDC_total_168
+ncep_GFS_flag_168
+NDFD_sky_168
+NDFD_global_168
+NDFD_flag_168
+ecmwf_ghi_168
+ecmwf_flag_168
+ecmwf_cloud_168
+persistence_174
+ncep_GFS_sfc_DSWRF_surface_avg_174
+ncep_GFS_sfc_DSWRF_surface_inst_174
+ncep_GFS_sfc_TCDC_high_174
+ncep_GFS_sfc_TCDC_mid_174
+ncep_GFS_sfc_TCDC_low_174
+ncep_GFS_sfc_TCDC_total_174
+ncep_GFS_DSWRF_174
+ncep_GFS_TCDC_total_174
+ncep_GFS_flag_174
+ecmwf_ghi_174
+ecmwf_flag_174
+ecmwf_cloud_174
+persistence_180
+ncep_GFS_sfc_DSWRF_surface_avg_180
+ncep_GFS_sfc_DSWRF_surface_inst_180
+ncep_GFS_sfc_TCDC_high_180
+ncep_GFS_sfc_TCDC_mid_180
+ncep_GFS_sfc_TCDC_low_180
+ncep_GFS_sfc_TCDC_total_180
+ncep_GFS_DSWRF_180
+ncep_GFS_TCDC_total_180
+ncep_GFS_flag_180
+ecmwf_ghi_180
+ecmwf_flag_180
+ecmwf_cloud_180
+persistence_186
+ncep_GFS_sfc_DSWRF_surface_avg_186
+ncep_GFS_sfc_DSWRF_surface_inst_186
+ncep_GFS_sfc_TCDC_high_186
+ncep_GFS_sfc_TCDC_mid_186
+ncep_GFS_sfc_TCDC_low_186
+ncep_GFS_sfc_TCDC_total_186
+ncep_GFS_DSWRF_186
+ncep_GFS_TCDC_total_186
+ncep_GFS_flag_186
+ecmwf_ghi_186
+ecmwf_flag_186
+ecmwf_cloud_186
+persistence_192
+ncep_GFS_sfc_DSWRF_surface_avg_192
+ncep_GFS_sfc_DSWRF_surface_inst_192
+ncep_GFS_sfc_TCDC_high_192
+ncep_GFS_sfc_TCDC_mid_192
+ncep_GFS_sfc_TCDC_low_192
+ncep_GFS_sfc_TCDC_total_192
+ncep_GFS_DSWRF_192
+ncep_GFS_TCDC_total_192
+ncep_GFS_flag_192
+ecmwf_ghi_192
+ecmwf_flag_192
+ecmwf_cloud_192
+persistence_204
+ncep_GFS_sfc_DSWRF_surface_avg_204
+ncep_GFS_sfc_DSWRF_surface_inst_204
+ncep_GFS_sfc_TCDC_high_204
+ncep_GFS_sfc_TCDC_mid_204
+ncep_GFS_sfc_TCDC_low_204
+ncep_GFS_sfc_TCDC_total_204
+ncep_GFS_DSWRF_204
+ncep_GFS_TCDC_total_204
+ncep_GFS_flag_204
+ecmwf_ghi_204
+ecmwf_flag_204
+ecmwf_cloud_204
+persistence_216
+ncep_GFS_sfc_DSWRF_surface_avg_216
+ncep_GFS_sfc_DSWRF_surface_inst_216
+ncep_GFS_sfc_TCDC_high_216
+ncep_GFS_sfc_TCDC_mid_216
+ncep_GFS_sfc_TCDC_low_216
+ncep_GFS_sfc_TCDC_total_216
+ncep_GFS_DSWRF_216
+ncep_GFS_TCDC_total_216
+ncep_GFS_flag_216
+ecmwf_ghi_216
+ecmwf_flag_216
+ecmwf_cloud_216
+persistence_228
+ncep_GFS_sfc_DSWRF_surface_avg_228
+ncep_GFS_sfc_DSWRF_surface_inst_228
+ncep_GFS_sfc_TCDC_high_228
+ncep_GFS_sfc_TCDC_mid_228
+ncep_GFS_sfc_TCDC_low_228
+ncep_GFS_sfc_TCDC_total_228
+ncep_GFS_DSWRF_228
+ncep_GFS_TCDC_total_228
+ncep_GFS_flag_228
+ecmwf_ghi_228
+ecmwf_flag_228
+ecmwf_cloud_228
+persistence_240
+ncep_GFS_sfc_DSWRF_surface_avg_240
+ncep_GFS_sfc_DSWRF_surface_inst_240
+ncep_GFS_sfc_TCDC_high_240
+ncep_GFS_sfc_TCDC_mid_240
+ncep_GFS_sfc_TCDC_low_240
+ncep_GFS_sfc_TCDC_total_240
+ncep_GFS_DSWRF_240
+ncep_GFS_TCDC_total_240
+ncep_GFS_flag_240
+ecmwf_ghi_240
+ecmwf_flag_240
+ecmwf_cloud_240
+persistence_252
+ncep_GFS_sfc_DSWRF_surface_avg_252
+ncep_GFS_sfc_DSWRF_surface_inst_252
+ncep_GFS_sfc_TCDC_high_252
+ncep_GFS_sfc_TCDC_mid_252
+ncep_GFS_sfc_TCDC_low_252
+ncep_GFS_sfc_TCDC_total_252
+persistence_264
+ncep_GFS_sfc_DSWRF_surface_avg_264
+ncep_GFS_sfc_DSWRF_surface_inst_264
+ncep_GFS_sfc_TCDC_high_264
+ncep_GFS_sfc_TCDC_mid_264
+ncep_GFS_sfc_TCDC_low_264
+ncep_GFS_sfc_TCDC_total_264
+persistence_276
+ncep_GFS_sfc_DSWRF_surface_avg_276
+ncep_GFS_sfc_DSWRF_surface_inst_276
+ncep_GFS_sfc_TCDC_high_276
+ncep_GFS_sfc_TCDC_mid_276
+ncep_GFS_sfc_TCDC_low_276
+ncep_GFS_sfc_TCDC_total_276
+persistence_288
+ncep_GFS_sfc_DSWRF_surface_avg_288
+ncep_GFS_sfc_DSWRF_surface_inst_288
+ncep_GFS_sfc_TCDC_high_288
+ncep_GFS_sfc_TCDC_mid_288
+ncep_GFS_sfc_TCDC_low_288
+ncep_GFS_sfc_TCDC_total_288
+persistence_300
+ncep_GFS_sfc_DSWRF_surface_avg_300
+ncep_GFS_sfc_DSWRF_surface_inst_300
+ncep_GFS_sfc_TCDC_high_300
+ncep_GFS_sfc_TCDC_mid_300
+ncep_GFS_sfc_TCDC_low_300
+ncep_GFS_sfc_TCDC_total_300
+persistence_312
+ncep_GFS_sfc_DSWRF_surface_avg_312
+ncep_GFS_sfc_DSWRF_surface_inst_312
+ncep_GFS_sfc_TCDC_high_312
+ncep_GFS_sfc_TCDC_mid_312
+ncep_GFS_sfc_TCDC_low_312
+ncep_GFS_sfc_TCDC_total_312
+persistence_324
+ncep_GFS_sfc_DSWRF_surface_avg_324
+ncep_GFS_sfc_DSWRF_surface_inst_324
+ncep_GFS_sfc_TCDC_high_324
+ncep_GFS_sfc_TCDC_mid_324
+ncep_GFS_sfc_TCDC_low_324
+ncep_GFS_sfc_TCDC_total_324
+persistence_336
+ncep_GFS_sfc_DSWRF_surface_avg_336
+ncep_GFS_sfc_DSWRF_surface_inst_336
+ncep_GFS_sfc_TCDC_high_336
+ncep_GFS_sfc_TCDC_mid_336
+ncep_GFS_sfc_TCDC_low_336
+ncep_GFS_sfc_TCDC_total_336
+persistence_348
+ncep_GFS_sfc_DSWRF_surface_avg_348
+ncep_GFS_sfc_DSWRF_surface_inst_348
+ncep_GFS_sfc_TCDC_high_348
+ncep_GFS_sfc_TCDC_mid_348
+ncep_GFS_sfc_TCDC_low_348
+ncep_GFS_sfc_TCDC_total_348
+persistence_360
+ncep_GFS_sfc_DSWRF_surface_avg_360
+ncep_GFS_sfc_DSWRF_surface_inst_360
+ncep_GFS_sfc_TCDC_high_360
+ncep_GFS_sfc_TCDC_mid_360
+ncep_GFS_sfc_TCDC_low_360
+ncep_GFS_sfc_TCDC_total_360
+persistence_372
+ncep_GFS_sfc_DSWRF_surface_avg_372
+ncep_GFS_sfc_DSWRF_surface_inst_372
+ncep_GFS_sfc_TCDC_high_372
+ncep_GFS_sfc_TCDC_mid_372
+ncep_GFS_sfc_TCDC_low_372
+ncep_GFS_sfc_TCDC_total_372
+ */
