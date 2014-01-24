@@ -15,6 +15,7 @@ STEP 2  Error calculation
 
 //#define DEBUG
 
+char ErrStr[2048];
 
 // satellite GHI is treated as a quasi-model; it's run through the error codes but
 // it's not a forecast entity.
@@ -30,7 +31,7 @@ int doErrorAnalysis(forecastInputType *fci, int hourIndex)
     clearHourlyErrorFields(fci, hourIndex);   
 
     if(!filterHourlyModelData(fci, hourIndex))
-        return False;           
+        return False;    
     if(!computeHourlyBiasErrors(fci, hourIndex))
         return False;
     if(!computeHourlyRmseErrors(fci, hourIndex))
@@ -47,7 +48,7 @@ void clearHourlyErrorFields(forecastInputType *fci, int hourIndex)
     int modelIndex;
     
 
-    fprintf(stderr, "Clearing stats fields for hour %d\n", hourIndex);
+    //fprintf(stderr, "Clearing stats fields for hour %d\n", hourIndex);
     // zero out all statistical values
     clearModelStats(&modelData->satModelError);
     clearModelStats(&modelData->weightedModelError);
@@ -79,17 +80,6 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) 
         modelData->modelError[modelIndex].N = 0;
 
-    // for the each model: does it even go out to the current hoursAhead?
-    // use isActive to keep track of this info
-    // use usUsale to signify isActive and not a reference forecast model (such as persistence)
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        modelData->modelError[modelIndex].isActive = (getMaxHoursAhead(fci, modelIndex) >= hoursAhead);
-        modelData->modelError[modelIndex].isUsable = modelData->modelError[modelIndex].isActive && !modelData->modelError[modelIndex].isReference;
-#ifdef DEBUG
-        fprintf(stderr, "For hours ahead %d and model %s, state = %s\n", hoursAhead, getGenericModelName(fci, modelIndex), modelData->modelError[modelIndex].isActive ? "active" : "inactive");
-#endif
-    }
-  
     for(sampleInd=0; sampleInd<fci->numTotalSamples; sampleInd++) {
         thisSample = &fci->timeSeries[sampleInd];
         thisSample->isValid = True;
@@ -101,8 +91,8 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
                 if(thisGHI < 5) {
 //#ifdef DEBUG1
                     if(thisSample->sunIsUp) 
-                        fprintf(fci->warningsFp, "%s : bad sample: model %s %d hours ahead: GHI = %.1f, zenith = %.1f\n", 
-                            dtToStringCsv2(&thisSample->dateTime), getGenericModelName(fci, modelIndex), modelData->hoursAhead, thisGHI, thisSample->zenith);
+                        fprintf(fci->warningsFile.fp, "%s : bad sample: model %s, modelIndex = %d, hoursAheadIndex = %d : GHI = %.1f, zenith = %.1f\n", 
+                            dtToStringCsv2(&thisSample->dateTime), getGenericModelName(fci, modelIndex), modelIndex, modelData->hoursAhead, thisGHI, thisSample->zenith);
 //#endif                
                     thisSample->isValid = False;
                     // break;
@@ -138,7 +128,7 @@ int filterHourlyModelData(forecastInputType *fci, int hourIndex)
     }
     
     if(modelData->numValidSamples < 1) {
-        fprintf(fci->warningsFp, "doErrorAnalysis(): for hour index %d (%d hours ahead): got too few valid points to work with\n", hourIndex, modelData->hoursAhead);
+        fprintf(fci->warningsFile.fp, "doErrorAnalysis(): for hour index %d (%d hours ahead): got too few valid points to work with\n", hourIndex, modelData->hoursAhead);
         //FatalError("doErrorAnalysis()", "Too few valid data points to work with.");
         return False;
     }
@@ -476,3 +466,49 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex)
     return True;
 }
 
+void dumpNumModelsReportingTable(forecastInputType *fci)
+{
+    //             hours ahead
+    //
+    // datetime1 nmr1, nmr2, nmr3, ..
+    // datetime2
+    // datetime3
+    // ...
+    char tempFileName[2048];
+    int sampleInd, modelIndex, hourIndex, numModelsReporting;
+    timeSeriesType *thisSample;
+    
+    sprintf(tempFileName, "%s/%s.numModelsReporting.csv", fci->outputDirectory, fci->siteName);
+    fci->modelsAttendenceFile.fileName = strdup(tempFileName);
+    
+    if((fci->modelsAttendenceFile.fp = fopen(fci->modelsAttendenceFile.fileName, "w")) == NULL) {
+        sprintf(ErrStr, "Couldn't open file %s: %s", fci->modelsAttendenceFile.fileName, strerror(errno));
+        FatalError("dumpNumModelsReportingTable()", ErrStr);
+    }
+    
+    fprintf(fci->modelsAttendenceFile.fp, "#Number of Models Reporting for site %s, lat=%.3f, lon=%.3f, ha='hours ahead'\n", fci->siteName, fci->lat, fci->lon);
+    fprintf(fci->modelsAttendenceFile.fp, "#year,month,day,hour,minute");
+    for(hourIndex=fci->startHourLowIndex; hourIndex <= fci->startHourHighIndex; hourIndex++) {
+        fprintf(fci->modelsAttendenceFile.fp, ",ha_%d", fci->hourErrorGroup[hourIndex].hoursAhead);
+    }
+    fprintf(fci->modelsAttendenceFile.fp, "\n");
+    
+    for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
+        thisSample = &fci->timeSeries[sampleInd];
+        if(thisSample->sunIsUp) {
+            fprintf(fci->modelsAttendenceFile.fp, "%s", dtToStringCsv2(&thisSample->dateTime));
+            for(hourIndex=fci->startHourLowIndex; hourIndex <= fci->startHourHighIndex; hourIndex++) { 
+                numModelsReporting = 0;
+                for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+                    if(fci->hourErrorGroup[hourIndex].modelError[modelIndex].isUsable)  // is this model turned on for this hoursAhead?
+                        if(thisSample->modelData[hourIndex].modelGHI[modelIndex] >= 5)  // is the value for GHI good?
+                            numModelsReporting++;
+                }
+                fprintf(fci->modelsAttendenceFile.fp, ",%d", numModelsReporting);
+            }    
+            fprintf(fci->modelsAttendenceFile.fp, "\n");
+        }
+    }
+    
+    fclose(fci->modelsAttendenceFile.fp);
+}

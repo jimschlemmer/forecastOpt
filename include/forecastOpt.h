@@ -9,6 +9,7 @@
 #define	FORECASTOPT_H
 
 #include <time.h>
+#include <ctype.h>
 #include <malloc.h>
 #include <math.h>
 #include <unistd.h>
@@ -21,6 +22,7 @@
 #include <sys/stat.h>
 #include <dbi/dbi.h>
 #include <errno.h>
+extern int errno;
 
 #include "gridDateTime.h"
 #include "ioUtils.h"
@@ -43,7 +45,7 @@ extern "C" {
 
 #define MAX_MODELS 16
 #define MAX_SITES 16
-#define MAX_HOURLY_SLOTS 64
+#define MAX_HOURS_AHEAD 64
 #define MIN_GHI_VAL 5
 
 // header strings for output .csv files that possibly need to be scanned for later
@@ -86,7 +88,7 @@ typedef struct {
 typedef struct {
     dateTimeType dateTime;
     double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, weightedModelGHI;   // this is the ground data
-    modelDataType modelData[MAX_HOURLY_SLOTS];
+    modelDataType modelData[MAX_HOURS_AHEAD];
     char isValid, sunIsUp;
 } timeSeriesType;
 
@@ -110,17 +112,28 @@ typedef struct {
 } siteType;
 
 typedef struct {
-    columnType columnInfo[MAX_MODELS * MAX_HOURLY_SLOTS];
-    modelErrorType hourErrorGroup[MAX_HOURLY_SLOTS];
+    char *fileName;
+    FILE *fp;
+    int  lineNumber;
+    char *headerLine;  // not used by all
+} fileType;
+
+typedef struct {
+    fileType forecastTableFile;
+    fileType warningsFile;
+    fileType descriptionFile;
+    fileType modelsAttendenceFile;
+    fileType summaryFile;
+    columnType columnInfo[MAX_MODELS * MAX_HOURS_AHEAD];
+    modelErrorType hourErrorGroup[MAX_HOURS_AHEAD];
     int numColumnInfoEntries;
     int numModels;
-    int nummodelDatas;
+    int maxModelIndex;
     int numTotalSamples;
     timeSeriesType *timeSeries;
     char *siteGroup;
     char *siteName;
     char *outputDirectory;
-    char *summaryFilename;
     double lat, lon;
     int zenithCol, groundGHICol, groundDNICol, groundDiffuseCol, groundTempCol, groundWindCol, satGHICol, clearskyGHICol, startModelsColumnNumber;
     dateTimeType startDate, endDate;
@@ -128,15 +141,15 @@ typedef struct {
     char multipleSites;
     double weightSumLowCutoff, weightSumHighCutoff;
     int startHourLowIndex, startHourHighIndex;
-    char warningsFileName[2048];
-    FILE *warningsFp;
     int numSites;
     siteType allSiteInfo[MAX_SITES];
     siteType *thisSite; // points to one of the above registered sites
     int numInputRecords;
     int numDaylightRecords;
     char runWeightedErrorAnalysis;
-    char *headerLine;
+    char *forecastHeaderLine;
+    int forecastLineNumber;
+    char runOptimizer;
 } forecastInputType;
 
 
@@ -156,6 +169,7 @@ int runOptimizerNested(forecastInputType *fci, int hourIndex);
 char *getElapsedTime(time_t start_t);
 void printHourlySummary(forecastInputType *fci, int hourIndex);
 void printSummaryCsv(forecastInputType *fci);
+void dumpNumModelsReportingTable(forecastInputType *fci);
 
 #endif	/* FORECASTOPT_H */
 
