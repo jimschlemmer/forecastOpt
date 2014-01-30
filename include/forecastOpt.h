@@ -47,6 +47,7 @@ extern "C" {
 #define MAX_SITES 16
 #define MAX_HOURS_AHEAD 64
 #define MIN_GHI_VAL 5
+#define MAX_HOURS_AFTER_SUNRISE 9
 
 // header strings for output .csv files that possibly need to be scanned for later
 #define WEIGHT_1_STR "weight 1"
@@ -69,13 +70,13 @@ typedef struct {
 } modelStatsType;
 
 typedef struct {
-    int hoursAhead;
+    int hoursAhead, hoursAfterSunrise;  // both or just hoursAhead can be active, depending on run mode 
     int numValidSamples;
     int ground_N;
     double meanMeasuredGHI;
-    modelStatsType satModelError;
-    modelStatsType modelError[MAX_MODELS];
-    modelStatsType weightedModelError;
+    modelStatsType satModelStats;
+    modelStatsType hourlyModelStats[MAX_MODELS];
+    modelStatsType weightedModelStats;
     double optimizedRMSEphase1;
     double optimizedRMSEphase2;
     long phase1RMSEcalls, phase2RMSEcalls;
@@ -90,6 +91,8 @@ typedef struct {
     double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, weightedModelGHI;   // this is the ground data
     modelDataType modelData[MAX_HOURS_AHEAD];
     char isValid, sunIsUp;
+    dateTimeType sunrise;
+    int hoursAfterSunrise;
 } timeSeriesType;
 
 typedef struct {
@@ -125,7 +128,9 @@ typedef struct {
     fileType modelsAttendenceFile;
     fileType summaryFile;
     columnType columnInfo[MAX_MODELS * MAX_HOURS_AHEAD];
-    modelErrorType hourErrorGroup[MAX_HOURS_AHEAD];
+    modelErrorType hoursAheadGroup[MAX_HOURS_AHEAD];
+    modelErrorType hoursAfterSunriseGroup[MAX_HOURS_AFTER_SUNRISE][MAX_HOURS_AFTER_SUNRISE];
+    int hoursAheadMap[MAX_HOURS_AHEAD];
     int numColumnInfoEntries;
     int numModels;
     int maxModelIndex;
@@ -150,8 +155,8 @@ typedef struct {
     char *forecastHeaderLine;
     int forecastLineNumber;
     char runOptimizer;
+    char runHoursAfterSunrise;
 } forecastInputType;
-
 
 int doErrorAnalysis(forecastInputType *fci, int hourIndex);
 char *getGenericModelName(forecastInputType *fci, int modelIndex);

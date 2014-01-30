@@ -12,7 +12,7 @@ INC	= -I./${INCLUDEDIR} # -I./include -I/usr/include
 CFLAGS = -g -Wall ${INC} 
 #CFLAGS = -O3 -Wall ${INC} 
 LIBS	= -lm -ldbi -ldl
-OBJS	= forecastOpt.o errorAnalysis.o optimizer.o
+OBJS	= forecastOpt.o errorAnalysis.o optimizer.o 
 
 .c.o:
 	${CC} ${CFLAGS} -c $*.c

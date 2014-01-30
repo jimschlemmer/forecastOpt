@@ -16,6 +16,7 @@ char ErrStr[4096];
 #include "gridDateTime.h"
 #include "timeUtils.h"
 #include "ioUtils.h"
+#include "sunae.h"
 
 /*
  * 
@@ -536,4 +537,58 @@ int sunIsUpPoint(ae_pack *aep, dateTimeType *dt)
     fprintf(stderr, "[%s] lat=%.3f lon=%.3f el=%.3f\n", dtToStringDateTime(dt), aep->lat, aep->lon, aep->el);
 #endif
     return(aep->el > 0);
+}
+
+// Iterative approach to calculating sunrise time.
+// Looked into codes on-line but they were either too complex
+// or, in the case of the Naval Observatory's pseudo code, too
+// ambiguous (in terms of radian to degree conversions).  With the below
+// code, I use a tried and true ephemeris calculator (sunae) along with 
+// an iterative method to home in on the correct hour/minute of sunrise.
+dateTimeType calculateSunrise(dateTimeType *dt, double lat, double lon)
+{
+    dateTimeType sunrise = *dt;
+    ae_pack aep;
+    double sunUpHour, sunUpMinute;
+    int hour, minute;
+    char sunIsUp;
+    
+    aep.lat = lat;
+    aep.lon = lon;
+    aep.year = dt->year; //tm->tm_year+1900;
+    aep.doy = dt->doy;// tm->tm_yday+1;
+    aep.hour = -1;  // go back to previous day's hour 23 in case sunrise is at GMT midnight which is likely to be somewhere in Asia.
+    sunae(&aep);
+    sunIsUp = (aep.el > 0);
+   
+    for(hour=0; hour<24; hour++) {   
+       aep.hour = hour;
+       sunae(&aep);
+       //fprintf(stderr, "[hour %d] lat=%.3f lon=%.3f el=%.3f zen=%.3f\n", hour, aep.lat, aep.lon, aep.el, aep.zen);
+       if(!sunIsUp && aep.el > 0) { // sun just rose
+           sunUpHour = hour - 1;
+           break;
+       }
+       sunIsUp = (aep.el > 0);
+    }
+    
+    aep.hour = sunUpHour - 1/60;  // go back a minute in case the sunrise is at the top of the hour
+    sunae(&aep);
+    sunIsUp = (aep.el > 0);
+    for(minute=0; minute<60; minute++) {   
+       aep.hour = sunUpHour + minute/60.0;
+       sunae(&aep);
+       //fprintf(stderr, "[hour %.0f minute %d] lat=%.3f lon=%.3f el=%.3f zen=%.3f\n", aep.hour, minute, aep.lat, aep.lon, aep.el, aep.zen);
+       if(!sunIsUp && aep.el > 0) {   // sun just rose
+           sunUpMinute = minute - 1;  // not doing seconds so it really doesn't matter
+           break;
+       }
+       sunIsUp = (aep.el > 0);
+    }
+    
+    sunrise.hour = sunUpHour;
+    sunrise.min = sunUpMinute;
+    setObsTime(&sunrise);  // make sure obs_time (utime) is set)
+    
+    return sunrise;
 }
