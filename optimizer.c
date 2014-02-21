@@ -3,27 +3,27 @@
 #include <stdlib.h>
 #include "forecastOpt.h"
 
-void setOptimalWeights(forecastInputType *fci, int hourIndex);
-double sumWeights(forecastInputType *fci, int hourIndex);
-void dumpWeights(forecastInputType *fci, int hourIndex, int phase);
+void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex);
+double sumWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex);
+void dumpWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunrise, int phase);
 
 time_t Start_t;
 double MinRmse;
 int InPass1;
 
-void runOptimizer(forecastInputType *fci, int hourIndex)
+void runOptimizer(forecastInputType *fci, int hoursAheadIndex)
 {
     int modelIndex, numActiveModels=0;
-    modelErrorType *modelData = &fci->hoursAheadGroup[hourIndex];
-    int i, hoursAhead = fci->hoursAheadGroup[hourIndex].hoursAhead;
+    modelRunType *modelData = &fci->hoursAheadGroup[hoursAheadIndex];
+    int i, hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
     long long counter, modulo=0, powerMultiple=0, limit;
     double modRemainder=0, weightSum, minRmse = 1000;
     time_t start_t = time(NULL);
     
     // intialize things
-    //clearHourlyErrorFields(fci, hourIndex);   
+    //clearHourlyErrorFields(fci, hoursAheadIndex);   
     
-    if(!filterHourlyModelData(fci, hourIndex))
+    if(!filterHourlyForecastData(fci, hoursAheadIndex, -1))
         return;
        
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
@@ -73,7 +73,7 @@ void runOptimizer(forecastInputType *fci, int hourIndex)
 //                    fprintf(stderr, "\n");
 
         if(weightSum >= 0.9 && weightSum <= 1.1) {
-            computeHourlyRmseErrorWeighted(fci, hourIndex);
+            computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, -1);
             if(modelData->weightedModelStats.rmsePct < minRmse) {
                 minRmse = modelData->weightedModelStats.rmsePct;
 
@@ -120,10 +120,11 @@ char *getElapsedTime(time_t start_t)
 #define MAX_WEIGHT_SUM 1.21
 
 // Macro that's a bit lengthy but which makes the nested loop more readable
-#define runRMSE() weightSum = sumWeights(fci, hourIndex); if(weightSum >= fci->weightSumLowCutoff && weightSum <= fci->weightSumHighCutoff) { modelData->phase1RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hourIndex); if(modelData->weightedModelStats.rmsePct < MinRmse) { MinRmse = modelData->weightedModelStats.rmsePct; setOptimalWeights(fci,hourIndex); } }
-#define runRMSE_2() weightSum = sumWeights(fci, hourIndex); if(weightSum >= 0.97 && weightSum <= 1.03) { modelData->phase2RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hourIndex); if(modelData->weightedModelStats.rmsePct < MinRmse) { MinRmse = modelData->weightedModelStats.rmsePct; setOptimalWeights(fci,hourIndex); } }
+#define runRMSE() weightSum = sumWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(weightSum >= fci->weightSumLowCutoff && weightSum <= fci->weightSumHighCutoff) { modelRun->phase1RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(modelRun->weightedModelStats.rmsePct < MinRmse) { MinRmse = modelRun->weightedModelStats.rmsePct; saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex); } }
+#define runRMSENoSumCheck() modelRun->phase1RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(modelRun->weightedModelStats.rmsePct < MinRmse) { MinRmse = modelRun->weightedModelStats.rmsePct; saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex); }
+#define runRMSE_2() weightSum = sumWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(weightSum >= 0.97 && weightSum <= 1.03) { modelRun->phase2RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(modelRun->weightedModelStats.rmsePct < MinRmse) { MinRmse = modelRun->weightedModelStats.rmsePct; saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex); } }
 
-int runOptimizerNested(forecastInputType *fci, int hourIndex)
+int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
 {
     int numDivisions = 10;
     double refinementBase, increment;  // just a real version of the above
@@ -131,37 +132,38 @@ int runOptimizerNested(forecastInputType *fci, int hourIndex)
     int i1,i2,i3,i4,i5,i6,i7,i8,i9,i10;
     modelStatsType *me[MAX_MODELS+1]; //*me1, *me2, *me3, *me4, *me5, *me6, *me7, *me8, *me9, *me10;
     double weightSum;
-    modelErrorType *modelData = &fci->hoursAheadGroup[hourIndex];
-//    int activeModel[MAX_MODELS];
+    modelRunType *modelRun;
+
+    modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
         
     InPass1 = True;    
     // intialize things
-    // clearHourlyErrorFields(fci, hourIndex);   no,no
+    // clearHourlyErrorFields(fci, hoursAheadIndex);   no,no
     
-    if(!filterHourlyModelData(fci, hourIndex))
-        return False;
+//    if(!filterHourlyForecastData(fci, hoursAheadIndex, hoursAfterSunriseIndex))
+//        return False;
        
-    //int hoursAhead = fci->hoursAheadGroup[hourIndex].hoursAhead;
+    //int hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
         //modelData->hourlyModelStats[modelIndex].isActive = (getMaxHoursAhead(fci, modelIndex) >= hoursAhead);
-        if(modelData->hourlyModelStats[modelIndex].isUsable) {
+        if(modelRun->hourlyModelStats[modelIndex].isUsable) {
             // activeModel[numActiveModels] = modelIndex;   
-            me[numActiveModels+1] = &modelData->hourlyModelStats[modelIndex];
+            me[numActiveModels+1] = &modelRun->hourlyModelStats[modelIndex];
             numActiveModels++;
         }  
     }
     
     increment = 0.1;
     MinRmse = 1000;
-    modelData->phase1RMSEcalls = 0;
+    modelRun->phase1RMSEcalls = 0;
     Start_t = time(NULL);
     
     for(i1=0; i1<=numDivisions; i1++) {
         me[1]->weight = i1 * increment;
-        //fprintf(stderr, "Model 0, weight %.1f\n", modelData->hourlyModelStats[0].weight);
+        //fprintf(stderr, "Model 0, weight %.1f\n", modelRun->hourlyModelStats[0].weight);
         for(i2=0; i2<=numDivisions; i2++) {
             me[2]->weight = i2 * increment;
-            //fprintf(stderr, "Model 1, weight %.1f\n", modelData->hourlyModelStats[1].weight);
+            //fprintf(stderr, "Model 1, weight %.1f\n", modelRun->hourlyModelStats[1].weight);
             if(numActiveModels == 2) {
                 runRMSE();
                 continue;  // these continues short-circuit the loops below 
@@ -223,12 +225,12 @@ int runOptimizerNested(forecastInputType *fci, int hourIndex)
                                                             }
                                                         }
                                                     }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                                                }  // that's 
+                                            }  // a
+                                        } // lot
+                                    } // of
+                                } // right
+                            } // parentheses
                         }
                     }
                 }
@@ -238,25 +240,30 @@ int runOptimizerNested(forecastInputType *fci, int hourIndex)
 
     InPass1 = False;
 
-    fprintf(stderr, "\n=== Elapsed time for phase 1: %s [RMSE calls = %ld] [RMSE = %.2f%%]\n", getElapsedTime(Start_t), modelData->phase1RMSEcalls, modelData->optimizedRMSEphase1 * 100);
-    dumpWeights(fci, hourIndex, 1);
-
+    fprintf(stderr, "\n=== Elapsed time for phase 1: %s [RMSE calls = %ld] [RMSE = %.2f%%]\n", getElapsedTime(Start_t), modelRun->phase1RMSEcalls, modelRun->optimizedRMSEphase1 * 100);
+    dumpWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, 1);
+            
+    if(fci->skipPhase2) {
+        modelRun->optimizedRMSEphase2 = modelRun->optimizedRMSEphase1;
+        return True;
+    }
+    
     refinementBase = -0.05;
     increment = .01;
     MinRmse = 1000;
-    modelData->phase2RMSEcalls = 0;
+    modelRun->phase2RMSEcalls = 0;
     Start_t = time(NULL);
     
     for(i1=0; i1<=numDivisions; i1++) {
         me[1]->weight = me[1]->optimizedWeightPass1 <= 0 ? 0 : me[1]->optimizedWeightPass1 + refinementBase + (i1 * increment);
         if(me[1]->weight <= 0)
             i1 = numDivisions;   // short circuit this since the weight starts at zero
-        //fprintf(stderr, "[%s] Model 0, i1 = %d origWeight = %.1f weight = %.3f\n", getElapsedTime(Start_t), i1, modelData->hourlyModelStats[0].optimizedWeightPass1, modelData->hourlyModelStats[0].weight);
+        //fprintf(stderr, "[%s] Model 0, i1 = %d origWeight = %.1f weight = %.3f\n", getElapsedTime(Start_t), i1, modelRun->hourlyModelStats[0].optimizedWeightPass1, modelRun->hourlyModelStats[0].weight);
         for(i2=0; i2<=numDivisions; i2++) {
             me[2]->weight = me[2]->optimizedWeightPass1 <= 0 ? 0 : me[2]->optimizedWeightPass1 + refinementBase + (i2 * increment);
             if(me[2]->weight <= 0)
                 i2 = numDivisions;  
-            //fprintf(stderr, "[%s] Model 1, i2 = %d origWeight = %.1f weight = %.3f\n", getElapsedTime(Start_t), i2, modelData->hourlyModelStats[1].optimizedWeightPass1, modelData->hourlyModelStats[1].weight);
+            //fprintf(stderr, "[%s] Model 1, i2 = %d origWeight = %.1f weight = %.3f\n", getElapsedTime(Start_t), i2, modelRun->hourlyModelStats[1].optimizedWeightPass1, modelRun->hourlyModelStats[1].weight);
             if(numActiveModels == 2) {
                 runRMSE_2();
                 continue;
@@ -347,51 +354,60 @@ int runOptimizerNested(forecastInputType *fci, int hourIndex)
         }
     }
         
-    fprintf(stderr, "\n=== Elapsed time for phase 2: %s [RMSE calls = %ld] [RMSE = %.2f%%]\n", getElapsedTime(Start_t), modelData->phase2RMSEcalls, modelData->optimizedRMSEphase2 * 100);
-    dumpWeights(fci, hourIndex, 2);
+    fprintf(stderr, "\n=== Elapsed time for phase 2: %s [RMSE calls = %ld] [RMSE = %.2f%%]\n", getElapsedTime(Start_t), modelRun->phase2RMSEcalls, modelRun->optimizedRMSEphase2 * 100);
+    dumpWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, 2);
     
     return True;
 }
 
 
-void dumpWeights(forecastInputType *fci, int hourIndex, int phase)
+void dumpWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int phase)
 {
-    modelErrorType *modelData = &fci->hoursAheadGroup[hourIndex];
     int modelIndex;
-    
-    fprintf(stderr, "\n=== Phase %d weights for %s hours ahead %d:\n", phase, fci->siteName, fci->hoursAheadGroup[hourIndex].hoursAhead);
+    modelRunType *modelRun;
+
+    modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
+
+    fprintf(stderr, "\n=== Phase %d weights for %s hours ahead %d", phase, fci->siteName, fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
+    if(hoursAfterSunriseIndex >= 0)
+        fprintf(stderr, ", hours after sunrise %d", hoursAfterSunriseIndex+1);
+    fprintf(stderr, ":\n");
+
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(modelData->hourlyModelStats[modelIndex].isUsable) {           
-            fprintf(stderr, "\t%-35s = %-8.2f\n", getGenericModelName(fci, modelIndex), phase < 2 ? modelData->hourlyModelStats[modelIndex].optimizedWeightPass1 : modelData->hourlyModelStats[modelIndex].optimizedWeightPass2);
+        if(modelRun->hourlyModelStats[modelIndex].isUsable) {           
+            fprintf(stderr, "\t%-35s = %-8.2f\n", getGenericModelName(fci, modelIndex), phase < 2 ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPass1 : modelRun->hourlyModelStats[modelIndex].optimizedWeightPass2);
         }
     }    
-    fprintf(stderr, "\t\n[Phase %d RMSE = %.2f%%]\n\n", phase, (phase < 2 ? modelData->optimizedRMSEphase1 : modelData->optimizedRMSEphase2) * 100);   
+    fprintf(stderr, "\t\n[Phase %d RMSE = %.2f%%]\n\n", phase, (phase < 2 ? modelRun->optimizedRMSEphase1 : modelRun->optimizedRMSEphase2) * 100);   
 }
 
 
-void setOptimalWeights(forecastInputType *fci, int hourIndex)
+void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
 {
     int modelIndex;
-    modelErrorType *modelData = &fci->hoursAheadGroup[hourIndex];
-    MinRmse = modelData->weightedModelStats.rmsePct;
+    modelRunType *modelRun;
+
+    modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];    
+
+    MinRmse = modelRun->weightedModelStats.rmsePct;
 
     if(fci->verbose) {
         if(InPass1)
-            fprintf(stderr, "[%ld] @ %s new low RMSE (pass 1) = %.3f%% wts=", modelData->phase1RMSEcalls, getElapsedTime(Start_t), MinRmse * 100);
+            fprintf(stderr, "[%ld] @ %s new low RMSE (pass 1) = %.3f%% wts=", modelRun->phase1RMSEcalls, getElapsedTime(Start_t), MinRmse * 100);
         else
-            fprintf(stderr, "[%ld] @ %s new low RMSE (pass 2) = %.3f%% wts=", modelData->phase2RMSEcalls, getElapsedTime(Start_t), MinRmse * 100);
+            fprintf(stderr, "[%ld] @ %s new low RMSE (pass 2) = %.3f%% wts=", modelRun->phase2RMSEcalls, getElapsedTime(Start_t), MinRmse * 100);
     }
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(modelData->hourlyModelStats[modelIndex].isUsable) {
+        if(modelRun->hourlyModelStats[modelIndex].isUsable) {
             if(InPass1) {
-                modelData->hourlyModelStats[modelIndex].optimizedWeightPass1 = modelData->hourlyModelStats[modelIndex].weight;
+                modelRun->hourlyModelStats[modelIndex].optimizedWeightPass1 = modelRun->hourlyModelStats[modelIndex].weight;
                 if(fci->verbose) 
-                    fprintf(stderr, "%.0f ", modelData->hourlyModelStats[modelIndex].weight * 10);
+                    fprintf(stderr, "%.0f ", modelRun->hourlyModelStats[modelIndex].weight * 10);
             }
             else {
-                modelData->hourlyModelStats[modelIndex].optimizedWeightPass2 = modelData->hourlyModelStats[modelIndex].weight;
+                modelRun->hourlyModelStats[modelIndex].optimizedWeightPass2 = modelRun->hourlyModelStats[modelIndex].weight;
                 if(fci->verbose) 
-                    fprintf(stderr, "%.0f ", modelData->hourlyModelStats[modelIndex].weight * 100);
+                    fprintf(stderr, "%.0f ", modelRun->hourlyModelStats[modelIndex].weight * 100);
             }
         }
     }
@@ -399,21 +415,25 @@ void setOptimalWeights(forecastInputType *fci, int hourIndex)
         fprintf(stderr, "\n");
     
     if(InPass1)
-        modelData->optimizedRMSEphase1 = MinRmse;
+        modelRun->optimizedRMSEphase1 = MinRmse;
     else
-        modelData->optimizedRMSEphase2 = MinRmse;
+        modelRun->optimizedRMSEphase2 = MinRmse;
 }
 
-double sumWeights(forecastInputType *fci, int hourIndex)
+double sumWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
 {
     int modelIndex;
-    modelErrorType *modelData = &fci->hoursAheadGroup[hourIndex];
     static double weightSum;
+    modelRunType *modelRun;
+
+    modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
     weightSum = 0;
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(modelData->hourlyModelStats[modelIndex].isUsable) {
-            weightSum += modelData->hourlyModelStats[modelIndex].weight;
+        if(modelRun->hourlyModelStats[modelIndex].isUsable) {
+            weightSum += modelRun->hourlyModelStats[modelIndex].weight;
+            if(weightSum > fci->weightSumHighCutoff) // no need to keep adding to a number that's breached the max weight sum allowed
+                return weightSum; 
         }
     }
     

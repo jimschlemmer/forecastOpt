@@ -47,7 +47,7 @@ extern "C" {
 #define MAX_SITES 16
 #define MAX_HOURS_AHEAD 64
 #define MIN_GHI_VAL 5
-#define MAX_HOURS_AFTER_SUNRISE 9
+#define MAX_HOURS_AFTER_SUNRISE 16
 
 // header strings for output .csv files that possibly need to be scanned for later
 #define WEIGHT_1_STR "weight 1"
@@ -80,7 +80,7 @@ typedef struct {
     double optimizedRMSEphase1;
     double optimizedRMSEphase2;
     long phase1RMSEcalls, phase2RMSEcalls;
-} modelErrorType;
+} modelRunType;
 
 typedef struct {
     double modelGHI[MAX_MODELS];
@@ -89,7 +89,7 @@ typedef struct {
 typedef struct {
     dateTimeType dateTime;
     double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, weightedModelGHI;   // this is the ground data
-    modelDataType modelData[MAX_HOURS_AHEAD];
+    modelDataType forecastData[MAX_HOURS_AHEAD];
     char isValid, sunIsUp;
     dateTimeType sunrise;
     int hoursAfterSunrise;
@@ -128,8 +128,8 @@ typedef struct {
     fileType modelsAttendenceFile;
     fileType summaryFile;
     columnType columnInfo[MAX_MODELS * MAX_HOURS_AHEAD];
-    modelErrorType hoursAheadGroup[MAX_HOURS_AHEAD];
-    modelErrorType hoursAfterSunriseGroup[MAX_HOURS_AFTER_SUNRISE][MAX_HOURS_AFTER_SUNRISE];
+    modelRunType hoursAheadGroup[MAX_HOURS_AHEAD];
+    modelRunType hoursAfterSunriseGroup[MAX_HOURS_AFTER_SUNRISE][MAX_HOURS_AFTER_SUNRISE];
     int hoursAheadMap[MAX_HOURS_AHEAD];
     int numColumnInfoEntries;
     int numModels;
@@ -143,6 +143,7 @@ typedef struct {
     int zenithCol, groundGHICol, groundDNICol, groundDiffuseCol, groundTempCol, groundWindCol, satGHICol, clearskyGHICol, startModelsColumnNumber;
     dateTimeType startDate, endDate;
     char verbose;
+    char filterWithSatModel;
     char multipleSites;
     double weightSumLowCutoff, weightSumHighCutoff;
     int startHourLowIndex, startHourHighIndex;
@@ -154,25 +155,28 @@ typedef struct {
     char runWeightedErrorAnalysis;
     char *forecastHeaderLine;
     int forecastLineNumber;
-    char runOptimizer;
+    char runOptimizer, skipPhase2;
     char runHoursAfterSunrise;
+    int maxHoursAfterSunrise;
+    char timeSpanStr[256];
 } forecastInputType;
 
-int doErrorAnalysis(forecastInputType *fci, int hourIndex);
+int doErrorAnalysis(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 char *getGenericModelName(forecastInputType *fci, int modelIndex);
 int getMaxHoursAhead(forecastInputType *fci, int modelIndex);
 void runOptimizer(forecastInputType *fci, int hourIndex);
-int filterHourlyModelData(forecastInputType *fci, int hourIndex);
-void clearHourlyErrorFields(forecastInputType *fci, int hourIndex);
+int filterHourlyForecastData(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
+void clearHourlyErrorFields(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
-int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex);
-int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex);
-int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex);
+int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
+int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
+int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
+int computeHourlyRmseErrorWeighted_AllHoursAfterSunrise(forecastInputType *fci, int hoursAheadIndex);
 void fatalError(char *functName, char *errStr, char *file, int linenumber);
 void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);
-int runOptimizerNested(forecastInputType *fci, int hourIndex);
+int runOptimizerNested(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 char *getElapsedTime(time_t start_t);
-void printHourlySummary(forecastInputType *fci, int hourIndex);
+void printHourlySummary(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 void printSummaryCsv(forecastInputType *fci);
 void dumpNumModelsReportingTable(forecastInputType *fci);
 
