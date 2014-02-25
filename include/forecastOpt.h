@@ -171,13 +171,13 @@ int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
 int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
-int computeHourlyRmseErrorWeighted_AllHoursAfterSunrise(forecastInputType *fci, int hoursAheadIndex);
+int dumpModelMix(forecastInputType *fci, int hoursAheadIndex);
 void fatalError(char *functName, char *errStr, char *file, int linenumber);
 void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);
 int runOptimizerNested(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 char *getElapsedTime(time_t start_t);
 void printHourlySummary(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
-void printSummaryCsv(forecastInputType *fci);
+void printHoursAheadSummaryCsv(forecastInputType *fci);
 void dumpNumModelsReportingTable(forecastInputType *fci);
 
 #endif	/* FORECASTOPT_H */

@@ -190,7 +190,10 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
     FILE *fp;
     char filename[1024];
     // open the file
-    sprintf(filename, "%s/%s.filteredData.hoursAhead=%d.hoursAfterSunrise=%d.csv", fci->outputDirectory, fci->siteName, hoursAhead,hoursAfterSunrise);
+    if(fci->runHoursAfterSunrise)
+        sprintf(filename, "%s/%s.filteredData.hoursAhead=%02d.hoursAfterSunrise=%02d.csv", fci->outputDirectory, fci->siteName, hoursAhead,hoursAfterSunrise);
+    else
+        sprintf(filename, "%s/%s.filteredData.hoursAhead=%02d.csv", fci->outputDirectory, fci->siteName, hoursAhead);
     if((fp = fopen(filename, "w")) == NULL) {
         fprintf(stderr, "Couldn't open file %s\n", filename);
         exit(1);
@@ -491,15 +494,55 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, 
 
 #define DEBUG_3
 
-int computeHourlyRmseErrorWeighted_AllHoursAfterSunrise(forecastInputType *fci, int hoursAheadIndex)
+int dumpModelMix(forecastInputType *fci, int hoursAheadIndex)
 {
     int N=0, sampleInd, modelIndex, hoursAfterSunriseIndex;
     double diff;
     double weight, weightTotal, meanMeasuredGHI;
     timeSeriesType *thisSample;
     modelStatsType *thisModelStats, *weightedModelErr;
-    modelRunType *modelRun;
-
+    modelRunType *modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][0] : &fci->hoursAheadGroup[hoursAheadIndex];   
+    static FILE *fp=NULL;
+    static char fileName[1024];
+    
+    if(fp == NULL) {
+        sprintf(fileName, "%s/%s.modelMix.%s.csv", fci->outputDirectory, fci->siteName, fci->runHoursAfterSunrise ? "HA_HAS" : "HA");
+        fprintf(stderr, "\n ======== Generating model mix file %s\n", fileName);
+        if((fp = fopen(fileName, "w")) == NULL) {
+            sprintf(ErrStr, "Couldn't open file %s", fileName);
+            FatalError("dumpModelMix()", ErrStr);
+        }
+        // print header
+        if(fci->runHoursAfterSunrise)
+            fprintf(fp, "HA,HAS");
+        else 
+            fprintf(fp, "HA");
+        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {    
+            if(modelRun->hourlyModelStats[modelIndex].isUsable) {
+                fprintf(fp, ",%s", getGenericModelName(fci, modelIndex));
+            }
+        }
+        fprintf(fp, ",N\n");
+    }
+    
+    if(!fci->runHoursAfterSunrise) {
+        fprintf(fp, "%d", modelRun->hoursAhead);
+        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+            thisModelStats = &modelRun->hourlyModelStats[modelIndex];
+            if(!modelRun->hourlyModelStats[modelIndex].isReference) {
+                if(modelRun->hourlyModelStats[modelIndex].isActive) {
+                    weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPass1 : thisModelStats->optimizedWeightPass2;
+                    fprintf(fp, ",%.0f", weight * 100);
+                }
+                else
+                    fprintf(fp, ",0");  // model is no longer active at this HA -- put a place mark in
+            }
+        }
+        fprintf(fp, ",%d\n", modelRun->numValidSamples);
+        fflush(fp);                
+        return True;
+    }
+    
     weightedModelErr = &fci->hoursAheadGroup[hoursAheadIndex].weightedModelStats; //&modelRun->weightedModelStats;
     weightedModelErr->sumModel_Ground_2 = weightedModelErr->rmse = weightedModelErr->rmsePct = 0;
     
@@ -508,6 +551,7 @@ int computeHourlyRmseErrorWeighted_AllHoursAfterSunrise(forecastInputType *fci, 
             //return False;
             continue;
         modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
+        fprintf(fp, "%d,%d", modelRun->hoursAhead, modelRun->hoursAfterSunrise);
         // N += modelRun->numValidSamples;
         // meanMeasuredGHI += modelRun->meanMeasuredGHI;
         for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
@@ -566,13 +610,28 @@ int computeHourlyRmseErrorWeighted_AllHoursAfterSunrise(forecastInputType *fci, 
                 weightedModelErr->sumModel_Ground_2 += (diff * diff);
             }
         }
+        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+            thisModelStats = &modelRun->hourlyModelStats[modelIndex];
+            if(!modelRun->hourlyModelStats[modelIndex].isReference) {
+                if(modelRun->hourlyModelStats[modelIndex].isActive) {
+                    weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPass1 : thisModelStats->optimizedWeightPass2;
+                    fprintf(fp, ",%.0f", weight * 100);
+                }
+                else
+                    fprintf(fp, ",0");  // model is no longer active at this HA -- put a place mark in
+            }
+        }
+        fprintf(fp, ",%d\n", modelRun->numValidSamples);
+        fflush(fp);        
     }
-        
+    
+       
     //N = modelRun->numValidSamples;   
     meanMeasuredGHI /= N;
     weightedModelErr->rmse = sqrt(weightedModelErr->sumModel_Ground_2 / N);
     weightedModelErr->rmsePct = weightedModelErr->rmse / meanMeasuredGHI; 
 
+    
 #ifdef DEBUG_3
     fprintf(stderr, "HA=%d/HAS=1..%d RMSE: N=%d, sumModel_Ground_2=%.1f, meanMeasuredGHI=%.1f, RMSE=%.1f, %%RMSE = %.02f\n", 
             modelRun->hoursAhead, fci->maxHoursAfterSunrise, N, weightedModelErr->sumModel_Ground_2, meanMeasuredGHI, weightedModelErr->rmse, weightedModelErr->rmsePct*100);
