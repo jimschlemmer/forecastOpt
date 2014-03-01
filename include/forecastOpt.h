@@ -93,6 +93,7 @@ typedef struct {
     char isValid, sunIsUp;
     dateTimeType sunrise;
     int hoursAfterSunrise;
+    char *siteName;  // useful for multiple site runs
 } timeSeriesType;
 
 typedef struct {
@@ -179,6 +180,7 @@ char *getElapsedTime(time_t start_t);
 void printHourlySummary(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 void printHoursAheadSummaryCsv(forecastInputType *fci);
 void dumpNumModelsReportingTable(forecastInputType *fci);
+char *genProxySiteName(forecastInputType *fci);
 
 #endif	/* FORECASTOPT_H */
 

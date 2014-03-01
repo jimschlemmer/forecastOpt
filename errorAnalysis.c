@@ -73,7 +73,7 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
     double thisGHI;
     timeSeriesType *thisSample;
     modelRunType *modelRun;
-    modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
+    modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
     
     int hoursAhead = modelRun->hoursAhead;
     int hoursAfterSunrise = modelRun->hoursAfterSunrise;
@@ -191,15 +191,18 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
     char filename[1024];
     // open the file
     if(fci->runHoursAfterSunrise)
-        sprintf(filename, "%s/%s.filteredData.hoursAhead=%02d.hoursAfterSunrise=%02d.csv", fci->outputDirectory, fci->siteName, hoursAhead,hoursAfterSunrise);
+        sprintf(filename, "%s/%s.filteredData.hoursAhead=%02d.hoursAfterSunrise=%02d.csv", fci->outputDirectory, genProxySiteName(fci), hoursAhead,hoursAfterSunrise);
     else
-        sprintf(filename, "%s/%s.filteredData.hoursAhead=%02d.csv", fci->outputDirectory, fci->siteName, hoursAhead);
+        sprintf(filename, "%s/%s.filteredData.hoursAhead=%02d.csv", fci->outputDirectory, genProxySiteName(fci), hoursAhead);
     if((fp = fopen(filename, "w")) == NULL) {
         fprintf(stderr, "Couldn't open file %s\n", filename);
         exit(1);
     }
     // print the header
-    fprintf(fp, "#year,month,day,hour,min,lineNum,groupIsValid,groundGHI,satGHI");
+    if(fci->runHoursAfterSunrise)
+        fprintf(fp, "#year,month,day,hour,min,lineNum,siteName,groupIsValid,hoursAfterSunrise,groundGHI,satGHI");
+    else
+        fprintf(fp, "#year,month,day,hour,min,lineNum,groupIsValid,groundGHI,satGHI");
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
         if(modelRun->hourlyModelStats[modelIndex].isActive) {
             fprintf(fp, ",%s", getGenericModelName(fci, modelIndex));
@@ -210,8 +213,12 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
             thisSample = &fci->timeSeries[sampleInd];
             if(thisSample->sunIsUp) {  // only dump sunUp points
-                fprintf(fp, "%s,%d,%s,%.0f,%.0f", dtToStringCsv2(&thisSample->dateTime), sampleInd, thisSample->isValid ? "yes" : "no", 
-                        thisSample->groundGHI , thisSample->satGHI );
+                fprintf(fp, "%s,%d", dtToStringCsv2(&thisSample->dateTime), sampleInd);                       
+                if(fci->runHoursAfterSunrise) 
+                    fprintf(fp, ",%s,%s,%d", thisSample->siteName, thisSample->isValid ? "yes" : "no", thisSample->hoursAfterSunrise);
+                else
+                    fprintf(fp, ",%s", thisSample->isValid ? "yes" : "no");
+                fprintf(fp, ",%.0f,%.0f", thisSample->groundGHI , thisSample->satGHI);
                 for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                     if(modelRun->hourlyModelStats[modelIndex].isActive) {
                         fprintf(fp, ",%.0f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);                    
@@ -506,7 +513,7 @@ int dumpModelMix(forecastInputType *fci, int hoursAheadIndex)
     static char fileName[1024];
     
     if(fp == NULL) {
-        sprintf(fileName, "%s/%s.modelMix.%s.csv", fci->outputDirectory, fci->siteName, fci->runHoursAfterSunrise ? "HA_HAS" : "HA");
+        sprintf(fileName, "%s/%s.modelMix.%s.csv", fci->outputDirectory, genProxySiteName(fci), fci->runHoursAfterSunrise ? "HA_HAS" : "HA");
         fprintf(stderr, "\n ======== Generating model mix file %s\n", fileName);
         if((fp = fopen(fileName, "w")) == NULL) {
             sprintf(ErrStr, "Couldn't open file %s", fileName);
@@ -558,7 +565,7 @@ int dumpModelMix(forecastInputType *fci, int hoursAheadIndex)
             thisSample = &fci->timeSeries[sampleInd];
             if(thisSample->isValid) {
 #ifdef DEBUG_3
-                fprintf(stderr, "DEBUG:%s,HA=%d,HAS=%d,", dtToStringCsv2(&thisSample->dateTime), modelRun->hoursAhead, modelRun->hoursAfterSunrise);
+                fprintf(stderr, "DEBUG:%s,%s,HA=%d,HAS=%d,", dtToStringCsv2(&thisSample->dateTime), thisSample->siteName, modelRun->hoursAhead, modelRun->hoursAfterSunrise);
 #endif
     #ifdef nDEBUG
                 if(firstTime) {
@@ -593,10 +600,12 @@ int dumpModelMix(forecastInputType *fci, int hoursAheadIndex)
                         weightTotal += weight;               
     #ifdef DEBUG_3
                         //if(hoursAhead == DEBUGHOUR && weightedModelErr->weight > 0.01*/) {
+/*
                         if(weight > 0.01)
                             fprintf(stderr, "%s=%.1f * %.2f,", 
                                     getGenericModelName(fci, modelIndex),thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex],weight);
                         //}
+*/
     #endif
                     }
                 }
@@ -651,7 +660,7 @@ void dumpNumModelsReportingTable(forecastInputType *fci)
     int sampleInd, modelIndex, hoursAheadIndex, numModelsReporting;
     timeSeriesType *thisSample;
     
-    sprintf(tempFileName, "%s/%s.numModelsReporting.csv", fci->outputDirectory, fci->siteName);
+    sprintf(tempFileName, "%s/%s.numModelsReporting.csv", fci->outputDirectory, genProxySiteName(fci));
     fci->modelsAttendenceFile.fileName = strdup(tempFileName);
     
     if((fci->modelsAttendenceFile.fp = fopen(fci->modelsAttendenceFile.fileName, "w")) == NULL) {
@@ -659,7 +668,7 @@ void dumpNumModelsReportingTable(forecastInputType *fci)
         FatalError("dumpNumModelsReportingTable()", ErrStr);
     }
     
-    fprintf(fci->modelsAttendenceFile.fp, "#Number of Models Reporting for site %s, lat=%.3f, lon=%.3f, ha='hours ahead'\n", fci->siteName, fci->lat, fci->lon);
+    fprintf(fci->modelsAttendenceFile.fp, "#Number of Models Reporting for site %s, lat=%.3f, lon=%.3f, ha='hours ahead'\n", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon);
     fprintf(fci->modelsAttendenceFile.fp, "#year,month,day,hour,minute");
     for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
         fprintf(fci->modelsAttendenceFile.fp, ",ha_%d", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);

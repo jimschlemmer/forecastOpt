@@ -557,22 +557,22 @@ dateTimeType calculateSunrise(dateTimeType *dt, double lat, double lon)
     aep.lon = lon;
     aep.year = dt->year; //tm->tm_year+1900;
     aep.doy = dt->doy;// tm->tm_yday+1;
-    aep.hour = -1;  // go back to previous day's hour 23 in case sunrise is at GMT midnight which is likely to be somewhere in Asia.
+    aep.hour = 0;  // go back to previous day's hour 23 in case sunrise is at GMT midnight which is likely to be somewhere in Asia.
     sunae(&aep);
     sunIsUp = (aep.el > 0);
    
+    // first get 
     for(hour=0; hour<24; hour++) {   
        aep.hour = hour;
        sunae(&aep);
        //fprintf(stderr, "[hour %d] lat=%.3f lon=%.3f el=%.3f zen=%.3f\n", hour, aep.lat, aep.lon, aep.el, aep.zen);
        if(!sunIsUp && aep.el > 0) { // sun just rose
-           sunUpHour = hour - 1;
            break;
        }
        sunIsUp = (aep.el > 0);
     }
     
-    aep.hour = sunUpHour - 1/60;  // go back a minute in case the sunrise is at the top of the hour
+    aep.hour = sunUpHour = hour - 1;  // back up an hour 
     sunae(&aep);
     sunIsUp = (aep.el > 0);
     for(minute=0; minute<60; minute++) {   
@@ -580,14 +580,20 @@ dateTimeType calculateSunrise(dateTimeType *dt, double lat, double lon)
        sunae(&aep);
        //fprintf(stderr, "[hour %.0f minute %d] lat=%.3f lon=%.3f el=%.3f zen=%.3f\n", aep.hour, minute, aep.lat, aep.lon, aep.el, aep.zen);
        if(!sunIsUp && aep.el > 0) {   // sun just rose
-           sunUpMinute = minute - 1;  // not doing seconds so it really doesn't matter
+           sunUpMinute = minute;  // not doing seconds so it really doesn't matter
            break;
        }
        sunIsUp = (aep.el > 0);
     }
     
-    sunrise.hour = sunUpHour;
-    sunrise.min = sunUpMinute;
+    if(aep.el < 0) {  // special case where sunrise in on the hour
+       sunrise.hour = sunUpHour + 1;
+       sunrise.min = 0;
+    }
+    else {
+        sunrise.hour = sunUpHour;
+        sunrise.min = sunUpMinute;
+    }
     setObsTime(&sunrise);  // make sure obs_time (utime) is set)
     
     return sunrise;

@@ -126,7 +126,7 @@ char *getElapsedTime(time_t start_t)
 
 int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
 {
-    int numDivisions = 10;
+    int numDivisions;
     double refinementBase, increment;  // just a real version of the above
     int modelIndex, numActiveModels=0;
     int i1,i2,i3,i4,i5,i6,i7,i8,i9,i10;
@@ -153,8 +153,11 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
         }  
     }
     
-    increment = 0.1;
+    numDivisions = 20;
+    increment = 1.0 / (double) numDivisions;
     MinRmse = 1000;
+    fprintf(stderr, "======= numDivisions = %d\n", numDivisions);
+    fprintf(stderr, "======= increment = %.2f\n", increment);
     modelRun->phase1RMSEcalls = 0;
     Start_t = time(NULL);
     
@@ -368,7 +371,7 @@ void dumpWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunr
 
     modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
-    fprintf(stderr, "\n=== Phase %d weights for %s hours ahead %d", phase, fci->siteName, fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
+    fprintf(stderr, "\n=== Phase %d weights for %s hours ahead %d", phase, genProxySiteName(fci), fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
     if(hoursAfterSunriseIndex >= 0)
         fprintf(stderr, ", hours after sunrise %d", hoursAfterSunriseIndex+1);
     fprintf(stderr, ":\n");
@@ -402,12 +405,12 @@ void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfte
             if(InPass1) {
                 modelRun->hourlyModelStats[modelIndex].optimizedWeightPass1 = modelRun->hourlyModelStats[modelIndex].weight;
                 if(fci->verbose) 
-                    fprintf(stderr, "%.0f ", modelRun->hourlyModelStats[modelIndex].weight * 10);
+                    fprintf(stderr, "%.1f ", modelRun->hourlyModelStats[modelIndex].weight * 10);
             }
             else {
                 modelRun->hourlyModelStats[modelIndex].optimizedWeightPass2 = modelRun->hourlyModelStats[modelIndex].weight;
                 if(fci->verbose) 
-                    fprintf(stderr, "%.0f ", modelRun->hourlyModelStats[modelIndex].weight * 100);
+                    fprintf(stderr, "%.1f ", modelRun->hourlyModelStats[modelIndex].weight * 100);
             }
         }
     }
