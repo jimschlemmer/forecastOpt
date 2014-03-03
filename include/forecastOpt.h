@@ -61,9 +61,9 @@ typedef struct {
     double sumModel_Ground, sumAbs_Model_Ground, sumModel_Ground_2;
     double mbe, mae, rmse; 
     double mbePct, maePct, rmsePct;
-    double weight;  // used for current calculation
-    double optimizedWeightPass1;  // the value associated with the minimized RMSE for all models in pass 1
-    double optimizedWeightPass2;  // the value associated with the minimized RMSE for all models in pass 2
+    int weight;  // used for current calculation
+    int optimizedWeightPhase1;  // the value associated with the minimized RMSE for all models in pass 1
+    int optimizedWeightPhase2;  // the value associated with the minimized RMSE for all models in pass 2
     int N;
     char isActive, isReference, isUsable, missingData;
     long long powerOfTen;
@@ -79,7 +79,7 @@ typedef struct {
     modelStatsType weightedModelStats;
     double optimizedRMSEphase1;
     double optimizedRMSEphase2;
-    long phase1RMSEcalls, phase2RMSEcalls;
+    long phase1RMSEcalls, phase2RMSEcalls, phase1SumWeightsCalls, phase2SumWeightsCalls;
 } modelRunType;
 
 typedef struct {
@@ -134,6 +134,10 @@ typedef struct {
     int hoursAheadMap[MAX_HOURS_AHEAD];
     int numColumnInfoEntries;
     int numModels;
+    int numDivisions;
+    int increment1, increment2, refinementBase;
+    int weightSumLowCutoff, weightSumHighCutoff;
+    int inPhase1;
     int maxModelIndex;
     int numTotalSamples;
     timeSeriesType *timeSeries;
@@ -146,7 +150,6 @@ typedef struct {
     char verbose;
     char filterWithSatModel;
     char multipleSites;
-    double weightSumLowCutoff, weightSumHighCutoff;
     int startHourLowIndex, startHourHighIndex;
     int numSites;
     siteType allSiteInfo[MAX_SITES];

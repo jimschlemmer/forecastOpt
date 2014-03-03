@@ -343,6 +343,13 @@ char *dtToStringFilename(dateTimeType *dt)
     return str;
 }
 
+char *dtToStringDateOnly(dateTimeType *dt)
+{
+    static char str[256];
+    
+    sprintf(str, "%d%02d%02d", dt->year, dt->month, dt->day);
+    return str;
+}
 // now we just have a couple of functions to write ascii dates to and read from 
 // files.
 int saveDateToFile(dateTimeType *dt, char *fileName)

@@ -46,7 +46,7 @@ void clearHourlyErrorFields(forecastInputType *fci, int hoursAheadIndex, int hou
 {
     int modelIndex;
     modelRunType *modelRun;
-    modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];   
+    modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];   
 
     //fprintf(stderr, "Clearing stats fields for hour %d\n", hoursAheadIndex);
     // zero out all statistical values
@@ -145,7 +145,7 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
     }
     
     if(modelRun->numValidSamples < 1) {
-        fprintf(fci->warningsFile.fp, "doErrorAnalysis(): for hour index %d (%d hours ahead): got too few valid points to work with\n", hoursAheadIndex, modelRun->hoursAhead);
+        fprintf(fci->warningsFile.fp, "doErrorAnalysis(): for hour index %d (%d hours ahead): got too few valid points to work with", hoursAheadIndex, modelRun->hoursAhead);
         //FatalError("doErrorAnalysis()", "Too few valid data points to work with.");
         return False;
     }
@@ -257,7 +257,7 @@ int computeHourlyBiasErrors(forecastInputType *fci, int hoursAheadIndex, int hou
     timeSeriesType *thisSample;
     modelStatsType *thisModelStats;
     modelRunType *modelRun;
-    modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
+    modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
     
 #ifdef DEBUG
     int count=0, hoursAhead = modelRun->hoursAhead;
@@ -349,7 +349,7 @@ int computeHourlyRmseErrors(forecastInputType *fci, int hoursAheadIndex, int hou
     int count=0, hoursAhead = modelRun->hoursAhead;
 #endif
     modelRunType *modelRun;
-    modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
+    modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
     
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
         thisSample = &fci->timeSeries[sampleInd];
@@ -435,7 +435,7 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, 
     timeSeriesType *thisSample;
     modelStatsType *thisModelStats, *weightedModelErr;
     modelRunType *modelRun;
-    modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
+    modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
 #ifdef DEBUG_2
     int count=0, hoursAhead = modelRun->hoursAhead;
@@ -469,7 +469,7 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, 
             for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                 thisModelStats = &modelRun->hourlyModelStats[modelIndex];
                 if(modelRun->hourlyModelStats[modelIndex].isActive) {
-                    weight = thisModelStats->weight;
+                    weight = ((double) thisModelStats->weight)/100.0;
                     thisSample->weightedModelGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                     weightTotal += weight;               
 #ifdef DEBUG_2
@@ -480,19 +480,32 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, 
 #endif
                 }
             }
+/*
             if(weightTotal > 1.1) 
                 fprintf(stderr, "Internal Error: model weights sum to %.2f\n", weightTotal);
+*/
             
             diff = thisSample->weightedModelGHI - thisSample->groundGHI;
             weightedModelErr->sumModel_Ground_2 += (diff * diff);
         }
     }
     
-    
+   
     N = modelRun->numValidSamples;   
     weightedModelErr->rmse = sqrt(weightedModelErr->sumModel_Ground_2 / N);
     weightedModelErr->rmsePct = weightedModelErr->rmse / modelRun->meanMeasuredGHI; 
 
+//#define PRINT_ALL_WEIGHTS
+#ifdef PRINT_ALL_WEIGHTS
+    fprintf(stderr, "weights: ");
+    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+        thisModelStats = &modelRun->hourlyModelStats[modelIndex];
+        if(modelRun->hourlyModelStats[modelIndex].isActive) 
+            fprintf(stderr, "%d ", thisModelStats->weight);
+    }
+    fprintf(stderr, "RSME=%.2f\n", weightedModelErr->rmsePct);
+#endif
+    
 #ifdef DEBUG_2
     fprintf(stderr, "weightedRMSE: N=%d, sumModel_Ground_2=%.1f, totalWeights=%.1f\n", N, weightedModelErr->sumModel_Ground_2, weightTotal);
 #endif
@@ -516,7 +529,7 @@ int dumpModelMix(forecastInputType *fci, int hoursAheadIndex)
         sprintf(fileName, "%s/%s.modelMix.%s.csv", fci->outputDirectory, genProxySiteName(fci), fci->runHoursAfterSunrise ? "HA_HAS" : "HA");
         fprintf(stderr, "\n ======== Generating model mix file %s\n", fileName);
         if((fp = fopen(fileName, "w")) == NULL) {
-            sprintf(ErrStr, "Couldn't open file %s", fileName);
+            sprintf(ErrStr, "Couldn't open file %s : %s", fileName, strerror(errno));
             FatalError("dumpModelMix()", ErrStr);
         }
         // print header
@@ -538,8 +551,8 @@ int dumpModelMix(forecastInputType *fci, int hoursAheadIndex)
             thisModelStats = &modelRun->hourlyModelStats[modelIndex];
             if(!modelRun->hourlyModelStats[modelIndex].isReference) {
                 if(modelRun->hourlyModelStats[modelIndex].isActive) {
-                    weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPass1 : thisModelStats->optimizedWeightPass2;
-                    fprintf(fp, ",%.0f", weight * 100);
+                    weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPhase1 : thisModelStats->optimizedWeightPhase2;
+                    fprintf(fp, ",%.0f", weight);
                 }
                 else
                     fprintf(fp, ",0");  // model is no longer active at this HA -- put a place mark in
@@ -594,7 +607,8 @@ int dumpModelMix(forecastInputType *fci, int hoursAheadIndex)
                 for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                     thisModelStats = &modelRun->hourlyModelStats[modelIndex];
                     if(modelRun->hourlyModelStats[modelIndex].isActive) {
-                        weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPass1 : thisModelStats->optimizedWeightPass2;
+                        weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPhase1 : thisModelStats->optimizedWeightPhase2;
+                        weight /= 100.0;  // weights are kept as ints 0-100; make 24 => .24
                         // add up weight * GHI for each included forecast model
                         thisSample->weightedModelGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                         weightTotal += weight;               
@@ -612,7 +626,7 @@ int dumpModelMix(forecastInputType *fci, int hoursAheadIndex)
 #ifdef DEBUG_3
                 fprintf(stderr, "weightedGHI=%.1f,groundGHI=%.1f\n",thisSample->weightedModelGHI, thisSample->groundGHI);
 #endif
-                if(weightTotal > 1.1 || weightTotal < 0.9) 
+                if(weightTotal > 1.5 || weightTotal < 0.5) 
                     fprintf(stderr, "Internal Error: model weights sum to %.2f\n", weightTotal);
 
                 diff = thisSample->weightedModelGHI - thisSample->groundGHI;
@@ -623,8 +637,8 @@ int dumpModelMix(forecastInputType *fci, int hoursAheadIndex)
             thisModelStats = &modelRun->hourlyModelStats[modelIndex];
             if(!modelRun->hourlyModelStats[modelIndex].isReference) {
                 if(modelRun->hourlyModelStats[modelIndex].isActive) {
-                    weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPass1 : thisModelStats->optimizedWeightPass2;
-                    fprintf(fp, ",%.0f", weight * 100);
+                    weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPhase1 : thisModelStats->optimizedWeightPhase2;
+                    fprintf(fp, ",%.0f", weight);
                 }
                 else
                     fprintf(fp, ",0");  // model is no longer active at this HA -- put a place mark in
@@ -633,13 +647,11 @@ int dumpModelMix(forecastInputType *fci, int hoursAheadIndex)
         fprintf(fp, ",%d\n", modelRun->numValidSamples);
         fflush(fp);        
     }
-    
-       
+          
     //N = modelRun->numValidSamples;   
     meanMeasuredGHI /= N;
     weightedModelErr->rmse = sqrt(weightedModelErr->sumModel_Ground_2 / N);
     weightedModelErr->rmsePct = weightedModelErr->rmse / meanMeasuredGHI; 
-
     
 #ifdef DEBUG_3
     fprintf(stderr, "HA=%d/HAS=1..%d RMSE: N=%d, sumModel_Ground_2=%.1f, meanMeasuredGHI=%.1f, RMSE=%.1f, %%RMSE = %.02f\n", 

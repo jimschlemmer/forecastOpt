@@ -31,6 +31,7 @@ char *dtToStringCsv2(dateTimeType *dt);
 char *dtToStringDateTime(dateTimeType *dt);
 char *dtToString2(dateTimeType *dt);
 char *dtToStringFilename(dateTimeType *dt);
+char *dtToStringDateOnly(dateTimeType *dt);
 float diffMinutes(dateTimeType *dt1, dateTimeType *dt2);
 float diffHours(dateTimeType *dt1, dateTimeType *dt2);
 float diffDays(dateTimeType *dt1, dateTimeType *dt2);
