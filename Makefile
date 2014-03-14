@@ -10,7 +10,6 @@ INC	= -I./${INCLUDEDIR} # -I./include -I/usr/include
 CFLAGS = -O3 -march=nocona -rdynamic ${INC} 
 CFLAGS = -g -rdynamic -Wall ${INC} 
 #CFLAGS = -pg -Wall ${INC} 
-#CFLAGS = -O3 -Wall ${INC} 
 LIBS	= -lm -ldbi -ldl
 OBJS	= forecastOpt.o errorAnalysis.o optimizer.o 
 
