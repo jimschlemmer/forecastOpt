@@ -88,7 +88,6 @@ void runOptimizer(forecastInputType *fci, int hoursAheadIndex)
                 if(counter >= 1000000000) 
                     fprintf(stderr, "\t high order info: count=%lld,modulo=%lld/modRem=%.1f/pwrMul=%lld/wt=%d\n",  
                         counter, modulo, modRemainder, powerMultiple, modelData->hourlyModelStats[fci->numModels-1].weight);
-
             }
         }
     }
@@ -137,8 +136,10 @@ int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
     if(weightSum > fci->weightSumHighCutoff)
         return False;
     if(weightSum >= fci->weightSumLowCutoff && weightSum <= fci->weightSumHighCutoff) { 
-        if(fci->inPhase1) modelRun->phase1RMSEcalls++; 
-        else              modelRun->phase2RMSEcalls++;
+        if(fci->inPhase1) 
+            modelRun->phase1RMSEcalls++; 
+        else              
+            modelRun->phase2RMSEcalls++;
         computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); 
         if(modelRun->weightedModelStats.rmsePct < minRmse) { 
             if(fci->inPhase1) modelRun->optimizedRMSEphase1 =  modelRun->weightedModelStats.rmsePct;
@@ -183,6 +184,10 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
         }  
     }
     
+    if(numActiveModels < 1) {
+        fprintf(stderr, "\n!!! Warning: no models active for current hour; no data to work with\n");
+        return False;
+    }
 /*
     For numDivisions =  5, increment1 = 100/5 = 20 => 0,20,40,60,80,100
     For numDivisions =  7, increment1 = 100/7 = 14 => 7,14,28,42,56,70,84,98
@@ -201,77 +206,83 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
  
     for(i1=0; i1<=fci->numDivisions; i1++) {
         stats[1]->weight = i1 * fci->increment1;
-        //fprintf(stderr, "Model 0, weight %.1f\n", modelRun->hourlyModelStats[0].weight);
-        for(i2=0; i2<=fci->numDivisions; i2++) {
-            stats[2]->weight = i2 * fci->increment1;
-            CheckWeights(2)  // if the sum of weights exceeds fci->weightSumHighCutoff, bail
-            //fprintf(stderr, "Model 1, weight %.1f\n", modelRun->hourlyModelStats[1].weight);
-            if(numActiveModels == 2) {
-                RunRmse()  
-            } else {            
-                for(i3=0; i3<=fci->numDivisions; i3++) {  
-                    stats[3]->weight = i3 * fci->increment1;
-                    CheckWeights(3)  // this involves a "break" to short circuit current for() loop)
-                    if(numActiveModels == 3) 
-                        RunRmse()   // this involves a "continue" to short circuit the loops below
-                    else {
-                        for(i4=0; i4<=fci->numDivisions; i4++) {           
-                            stats[4]->weight = i4 * fci->increment1;
-                            CheckWeights(4)
-                            if(numActiveModels == 4) 
-                                RunRmse()
-                            else {
-                                for(i5=0; i5<=fci->numDivisions; i5++) {           
-                                    stats[5]->weight = i5 * fci->increment1;
-                                    CheckWeights(5)
-                                    if(numActiveModels == 5) 
-                                        RunRmse()
-                                    else {
-                                        for(i6=0; i6<=fci->numDivisions; i6++) {           
-                                            stats[6]->weight = i6 * fci->increment1;
-                                            CheckWeights(6)
-                                            if(numActiveModels == 6) 
-                                                RunRmse()
-                                            else {
-                                                for(i7=0; i7<=fci->numDivisions; i7++) {
-                                                    stats[7]->weight = i7 * fci->increment1;
-                                                    CheckWeights(7)
-                                                    if(numActiveModels == 7) 
-                                                        RunRmse()
-                                                    else {
-                                                        for(i8=0; i8<=fci->numDivisions; i8++) {
-                                                            stats[8]->weight = i8 * fci->increment1;
-                                                            CheckWeights(8)
-                                                            if(numActiveModels == 8) 
-                                                                RunRmse()
-                                                            else {
-                                                                for(i9=0; i9<=fci->numDivisions; i9++) {
-                                                                    stats[9]->weight = i9 * fci->increment1;
-                                                                    CheckWeights(9)
-                                                                    if(numActiveModels == 9) 
-                                                                        RunRmse()               
-                                                                    else {
-                                                                        for(i10=0; i10<=fci->numDivisions; i10++) {   
-                                                                            stats[10]->weight = i10 * fci->increment1;
-                                                                            CheckWeights(10)
-                                                                            if(numActiveModels == 10) 
-                                                                                RunRmse()               
-                                                                            else {
-                                                                                fprintf(stderr, "Got to end of nested loop\n");
-                                                                                exit(1);
+        CheckWeights(1)  // if the sum of weights exceeds fci->weightSumHighCutoff, bail
+        if(numActiveModels == 1) {  // bail out
+            stats[1]->weight = 100;
+            RunRmse()  
+            break;
+        }
+        else {            
+            for(i2=0; i2<=fci->numDivisions; i2++) {
+                stats[2]->weight = i2 * fci->increment1;
+                CheckWeights(2)  // if the sum of weights exceeds fci->weightSumHighCutoff, bail
+                if(numActiveModels == 2) 
+                    RunRmse()  
+                else {            
+                    for(i3=0; i3<=fci->numDivisions; i3++) {  
+                        stats[3]->weight = i3 * fci->increment1;
+                        CheckWeights(3)  // this involves a "break" to short circuit current for() loop)
+                        if(numActiveModels == 3) 
+                            RunRmse()   // this involves a "continue" to short circuit the loops below
+                        else {
+                            for(i4=0; i4<=fci->numDivisions; i4++) {           
+                                stats[4]->weight = i4 * fci->increment1;
+                                CheckWeights(4)
+                                if(numActiveModels == 4) 
+                                    RunRmse()
+                                else {
+                                    for(i5=0; i5<=fci->numDivisions; i5++) {           
+                                        stats[5]->weight = i5 * fci->increment1;
+                                        CheckWeights(5)
+                                        if(numActiveModels == 5) 
+                                            RunRmse()
+                                        else {
+                                            for(i6=0; i6<=fci->numDivisions; i6++) {           
+                                                stats[6]->weight = i6 * fci->increment1;
+                                                CheckWeights(6)
+                                                if(numActiveModels == 6) 
+                                                    RunRmse()
+                                                else {
+                                                    for(i7=0; i7<=fci->numDivisions; i7++) {
+                                                        stats[7]->weight = i7 * fci->increment1;
+                                                        CheckWeights(7)
+                                                        if(numActiveModels == 7) 
+                                                            RunRmse()
+                                                        else {
+                                                            for(i8=0; i8<=fci->numDivisions; i8++) {
+                                                                stats[8]->weight = i8 * fci->increment1;
+                                                                CheckWeights(8)
+                                                                if(numActiveModels == 8) 
+                                                                    RunRmse()
+                                                                else {
+                                                                    for(i9=0; i9<=fci->numDivisions; i9++) {
+                                                                        stats[9]->weight = i9 * fci->increment1;
+                                                                        CheckWeights(9)
+                                                                        if(numActiveModels == 9) 
+                                                                            RunRmse()               
+                                                                        else {
+                                                                            for(i10=0; i10<=fci->numDivisions; i10++) {   
+                                                                                stats[10]->weight = i10 * fci->increment1;
+                                                                                CheckWeights(10)
+                                                                                if(numActiveModels == 10) 
+                                                                                    RunRmse()               
+                                                                                else {
+                                                                                    fprintf(stderr, "Got to end of nested loop\n");
+                                                                                    exit(1);
+                                                                                }
                                                                             }
-                                                                        }
-                                                                    } 
-                                                                }
-                                                            } 
-                                                        }
-                                                    } 
-                                                }  // that's 
-                                            }  // a
-                                        } // lot
-                                    } // of
-                                } // right
-                            } // parentheses
+                                                                        } 
+                                                                    }
+                                                                } 
+                                                            }
+                                                        } 
+                                                    }  // that's 
+                                                }  // a
+                                            } // lot
+                                        } // of
+                                    } // right
+                                } // parentheses
+                            }
                         }
                     }
                 }
@@ -293,7 +304,7 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     modelRun->optimizedRMSEphase2 = modelRun->optimizedRMSEphase1;  // start with phase 1 RMSE; if we can't improve upon that stick with it
 
     // bail out if we're only doing the first phase
-    if(fci->skipPhase2) {
+    if(fci->skipPhase2 || numActiveModels == 1) {  // if we're running only one model, don't need to refine
         return True;
     }
       

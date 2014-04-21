@@ -8,6 +8,9 @@
 #ifndef FORECASTOPT_H
 #define	FORECASTOPT_H
 
+#define NO_DUMP 0
+#define DO_DUMP 1
+
 #include <time.h>
 #include <ctype.h>
 #include <malloc.h>
@@ -48,6 +51,10 @@ extern "C" {
 #define MAX_HOURS_AHEAD 64
 #define MIN_GHI_VAL 5
 #define MAX_HOURS_AFTER_SUNRISE 16
+
+// file-level character reading limits
+#define MAX_FIELDS 2048
+#define LINE_LENGTH MAX_FIELDS * 64  
 
 // header strings for output .csv files that possibly need to be scanned for later
 #define WEIGHT_1_STR "weight 1"
@@ -103,7 +110,7 @@ typedef struct {
     int  maxhoursAhead;
     int  hoursAheadIndex;
     int  modelIndex;
-    int numGood, numMissing;
+    int  numGood, numMissing;
     double percentMissing;
 } columnType;
 
@@ -126,8 +133,12 @@ typedef struct {
     fileType forecastTableFile;
     fileType warningsFile;
     fileType descriptionFile;
+    fileType weightsFile;
     fileType modelsAttendenceFile;
     fileType summaryFile;
+    fileType modelMixFileOutput;
+    fileType modelMixFileInput;
+    fileType optimizedTSFile;
     columnType columnInfo[MAX_MODELS * MAX_HOURS_AHEAD];
     modelRunType hoursAheadGroup[MAX_HOURS_AHEAD];
     modelRunType hoursAfterSunriseGroup[MAX_HOURS_AFTER_SUNRISE][MAX_HOURS_AFTER_SUNRISE];
@@ -162,10 +173,11 @@ typedef struct {
     char runOptimizer, skipPhase2;
     char runHoursAfterSunrise;
     int maxHoursAfterSunrise;
+    char gotConfig, gotForecast;
     char timeSpanStr[256];
 } forecastInputType;
 
-int doErrorAnalysis(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
+int computeModelRMSE(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 char *getGenericModelName(forecastInputType *fci, int modelIndex);
 int getMaxHoursAhead(forecastInputType *fci, int modelIndex);
 void runOptimizer(forecastInputType *fci, int hourIndex);
@@ -175,7 +187,7 @@ int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
 int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
-int dumpModelMix(forecastInputType *fci, int hoursAheadIndex);
+int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex);
 void fatalError(char *functName, char *errStr, char *file, int linenumber);
 void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);
 int runOptimizerNested(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
@@ -184,6 +196,8 @@ void printHourlySummary(forecastInputType *fci, int hourIndex, int hoursAfterSun
 void printHoursAheadSummaryCsv(forecastInputType *fci);
 void dumpNumModelsReportingTable(forecastInputType *fci);
 char *genProxySiteName(forecastInputType *fci);
+int readModelMixFile(forecastInputType *fci);
+int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex);
 
 #endif	/* FORECASTOPT_H */
 
