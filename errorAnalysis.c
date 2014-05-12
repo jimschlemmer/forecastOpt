@@ -77,7 +77,7 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
     //modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
     modelRun = hoursAfterSunriseIndex >= 0 ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
  
-    int hoursAhead = fci->hoursAheadGroup[0].hoursAhead;
+    int hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
     int hoursAfterSunrise = hoursAfterSunriseIndex + 1;
     // reset a few variables
     modelRun->meanMeasuredGHI = modelRun->numValidSamples = modelRun->ground_N = 0;
@@ -88,6 +88,11 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
     for(sampleInd=0; sampleInd<fci->numTotalSamples; sampleInd++) {
         thisSample = &fci->timeSeries[sampleInd];
         thisSample->isValid = True;
+        
+        if(thisSample->zenith > 90) {
+            thisSample->isValid = False;
+            continue;            
+        }
         hoursAfterSunriseOK = (hoursAfterSunriseIndex < 0 || (thisSample->hoursAfterSunrise == hoursAfterSunrise));
 
         if(!hoursAfterSunriseOK) {
@@ -701,8 +706,12 @@ int readModelMixFile(forecastInputType *fci)
     int weight, lineNumber = 3;
     int fieldCol, hoursAhead, hoursAfterSunrise;
     int hoursAheadIndex, hoursAfterSunriseIndex, modelIndex;
+    int lowIndex, highIndex;
     char *modelName;
     modelRunType *modelRun;
+    
+    lowIndex = -1;
+    highIndex = -1;
     
     while(fgets(line, LINE_LENGTH, fci->modelMixFileInput.fp)) {
         strcpy(saveLine, line);
@@ -720,6 +729,10 @@ int readModelMixFile(forecastInputType *fci)
             FatalError("readModelMixFile()", ErrStr);
         }
         hoursAheadIndex = getHoursAheadIndex(fci, hoursAhead);
+        if(lowIndex < 0) 
+            lowIndex = hoursAheadIndex;
+        if(hoursAheadIndex > highIndex)
+            highIndex = hoursAheadIndex;
         
         if(fci->runHoursAfterSunrise) {
             hoursAfterSunrise = atoi(fields[fieldCol++]);
@@ -728,6 +741,8 @@ int readModelMixFile(forecastInputType *fci)
                 FatalError("readModelMixFile()", ErrStr);
             }
             hoursAfterSunriseIndex = hoursAfterSunrise - 1;
+            if(hoursAfterSunriseIndex > fci->maxHoursAfterSunrise)
+                fci->maxHoursAfterSunrise = hoursAfterSunriseIndex;
         }    
         
         for(; fieldCol < numFields-1; fieldCol++) {  // HA,[HAS],<model1>,Mmodel2>,...,<modeli>,N] => only want <models>
@@ -750,6 +765,13 @@ int readModelMixFile(forecastInputType *fci)
         lineNumber++;
     }
     
+    fci->startHourLowIndex = lowIndex;
+    fci->startHourHighIndex = highIndex;
+    
+    fprintf(stderr, "=== Finished reading weights file %s\n", fci->modelMixFileInput.fileName);
+    fprintf(stderr, "=== Start hour index = %d (%d hours ahead)\n", fci->startHourLowIndex, fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead);
+    fprintf(stderr, "=== End   hour index = %d (%d hours ahead)\n", fci->startHourHighIndex, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead);
+
     return True;
 }
 
@@ -813,7 +835,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
     modelRunType *modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][0] : &fci->hoursAheadGroup[hoursAheadIndex];   
     static char fileName[1024];
     
-    int hoursAhead = fci->hoursAheadGroup[0].hoursAhead;
+    int hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
 
     // open modelMix file
     if(fci->modelMixFileOutput.fp == NULL) {
@@ -868,17 +890,18 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
     
     // now do RMSE
     if(fci->summaryFile.fp == NULL) {
-        sprintf(fileName, "%s/forecastSummary.HAS.%s.%s-%s.div=%d.hours=%d-%d.csv", fci->outputDirectory, genProxySiteName(fci), dtToStringDateOnly(&fci->startDate), dtToStringDateOnly(&fci->endDate), fci->numDivisions, fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead);
+        char *startDateStr = strdup(dtToStringDateOnly(&fci->startDate));
+        char   *endDateStr = strdup(dtToStringDateOnly(&fci->endDate));
+        sprintf(fileName, "%s/forecastSummary.HAS.%s.%s-%s.div=%d.hours=%d-%d.csv", fci->outputDirectory, genProxySiteName(fci), startDateStr, endDateStr, fci->numDivisions, fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead);
         fci->summaryFile.fileName = strdup(fileName);
-    
         if((fci->summaryFile.fp = fopen(fci->summaryFile.fileName, "w")) == NULL) {
             sprintf(ErrStr, "Couldn't open file %s : %s", fci->summaryFile.fileName, strerror(errno));
             FatalError("printHoursAheadSummaryCsv()", ErrStr);
         }
         // print the header
-        fprintf(fci->summaryFile.fp, "#site=%s lat=%.3f lon=%.3f divisions=%d start date=%s ", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, fci->numDivisions, dtToStringFilename(&fci->startDate));
-        fprintf(fci->summaryFile.fp, "end date=%s\n", dtToStringFilename(&fci->endDate));
+        fprintf(fci->summaryFile.fp, "#site=%s lat=%.3f lon=%.3f divisions=%d start date=%s end date=%s\n", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, fci->numDivisions, startDateStr, endDateStr);
         fprintf(fci->summaryFile.fp, "#hoursAhead,group N,sat RMSE,p2RMSE\n");
+        free(startDateStr); free(endDateStr);
     }
     
     for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex<fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
@@ -972,9 +995,9 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
     satModelErr->rmse = sqrt(satModelErr->sumModel_Ground_2 / N);
     satModelErr->rmsePct = satModelErr->rmse / meanMeasuredGHI;
     
-//    fprintf(stderr, "HA=%d/HAS=1..%d RMSE: N=%d, sumModel_Ground_2=%.1f, meanMeasuredGHI=%.1f, RMSE=%.1f, %%RMSE = %.02f\n", 
-//            modelRun->hoursAhead, fci->maxHoursAfterSunrise, N, weightedModelErr->sumModel_Ground_2, meanMeasuredGHI, weightedModelErr->rmse, weightedModelErr->rmsePct*100);
-    fprintf(fci->summaryFile.fp, "%d,%d,%.1f,%.1f\n", modelRun->hoursAhead, N, satModelErr->rmsePct*100, weightedModelErr->rmsePct*100);
+    fprintf(stderr, "HA=%d/HAS=1..%d RMSE: N=%d, sumModel_Ground_2=%.1f, meanMeasuredGHI=%.1f, RMSE=%.1f, %%RMSE = %.02f\n", 
+            hoursAhead, fci->maxHoursAfterSunrise, N, weightedModelErr->sumModel_Ground_2, meanMeasuredGHI, weightedModelErr->rmse, weightedModelErr->rmsePct*100);
+    fprintf(fci->summaryFile.fp, "%d,%d,%.1f,%.1f\n", hoursAhead, N, satModelErr->rmsePct*100, weightedModelErr->rmsePct*100);
     fflush(fci->summaryFile.fp);                
 
     return True;

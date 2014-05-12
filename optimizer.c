@@ -36,8 +36,7 @@ void runOptimizer(forecastInputType *fci, int hoursAheadIndex)
     }
     
     // we only have to filter data once
-    
-    
+       
     // 10 ^ N permutations
     
     // run a counter 1..10^N
@@ -161,7 +160,7 @@ int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
 int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
 {
     int modelIndex, numActiveModels=0;
-    int i1,i2,i3,i4,i5,i6,i7,i8,i9,i10;
+    int i1,i2,i3,i4,i5,i6,i7,i8,i9,i10,i11;
     modelStatsType *stats[MAX_MODELS+1]; //*stats[1], *stats[2], ...
     modelRunType *modelRun;
 
@@ -186,6 +185,10 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     
     if(numActiveModels < 1) {
         fprintf(stderr, "\n!!! Warning: no models active for current hour; no data to work with\n");
+        return False;
+    }
+    if(numActiveModels > 11) {
+        fprintf(stderr, "\n!!! Warning: number of acive models [%d] > current max of 11\n", numActiveModels);
         return False;
     }
 /*
@@ -267,8 +270,16 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
                                                                                 if(numActiveModels == 10) 
                                                                                     RunRmse()               
                                                                                 else {
-                                                                                    fprintf(stderr, "Got to end of nested loop\n");
-                                                                                    exit(1);
+                                                                                    for(i11=0; i11<=fci->numDivisions; i11++) {   
+                                                                                        stats[11]->weight = i11 * fci->increment1;
+                                                                                        CheckWeights(11)
+                                                                                        if(numActiveModels == 11) 
+                                                                                            RunRmse()   
+                                                                                        else {                                                                                    
+                                                                                            fprintf(stderr, "Got to end of nested loop\n");
+                                                                                            exit(1);
+                                                                                        }
+                                                                                    }
                                                                                 }
                                                                             }
                                                                         } 
@@ -384,10 +395,19 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
                                                                             else { stats[10]->weight = 0; i10 = fci->numDivisions+1; }
                                                                             CheckWeights(10)
                                                                             if(numActiveModels == 10) {
-                                                                                RunRmse()               
+                                                                                RunRmse()      
                                                                             } else {
-                                                                                fprintf(stderr, "Got to end of nested loop\n");
-                                                                                exit(1);
+                                                                                for(i11=0; i11<=fci->numDivisions; i11++) {   
+                                                                                    if(stats[11]->optimizedWeightPhase1 > 0) stats[11]->weight = stats[11]->optimizedWeightPhase1 + fci->refinementBase + (i11 * fci->increment2);
+                                                                                    else { stats[11]->weight = 0; i11 = fci->numDivisions+1; }
+                                                                                    CheckWeights(11)
+                                                                                    if(numActiveModels == 11) {
+                                                                                        RunRmse()               
+                                                                                    } else {
+                                                                                        fprintf(stderr, "Got to end of nested loop\n");
+                                                                                        exit(1);
+                                                                                    }
+                                                                                }
                                                                             }
                                                                         }
                                                                     }

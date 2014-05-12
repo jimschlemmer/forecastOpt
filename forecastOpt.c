@@ -301,7 +301,7 @@ int readForecastFile(forecastInputType *fci)
             fci->siteGroup = strdup(fldPtr);
         }
         else if(strcasecmp(fldPtr, fci->siteGroup) != 0) {
-            if(fci->multipleSites) {
+            if(1 || fci->multipleSites) {
                 fprintf(fci->warningsFile.fp, "Note: switching site group from [%s] to [%s]\n", fci->siteGroup, fldPtr);
                 free(fci->siteGroup);
                 fci->siteGroup = strdup(fldPtr);
@@ -354,8 +354,8 @@ int readForecastFile(forecastInputType *fci)
                 thisSample->hoursAfterSunrise = 1;
             
 
-            fprintf(stderr, "%s,%.4f,%.4f,time=%s,", fci->siteName, fci->lat, fci->lon, dtToStringDateTime(&thisSample->dateTime));
-            fprintf(stderr, "sunrise=%s,hoursAfterSunrise=%d\n", dtToStringDateTime(&thisSample->sunrise), thisSample->hoursAfterSunrise);
+            //fprintf(stderr, "%s,%.4f,%.4f,time=%s,", fci->siteName, fci->lat, fci->lon, dtToStringDateTime(&thisSample->dateTime));
+            //fprintf(stderr, "sunrise=%s,hoursAfterSunrise=%d\n", dtToStringDateTime(&thisSample->sunrise), thisSample->hoursAfterSunrise);
 
 #endif
         }
@@ -1369,13 +1369,15 @@ void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci)
         for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) 
             fprintf(fp, "HAS=%d%c", hoursAfterSunriseIndex+1, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
         
-        for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
-            fprintf(fp, "%d,", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
-            for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
-                modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
-                err = &modelRun->hourlyModelStats[modelIndex];
-                if(err->isUsable)
-                    fprintf(fp, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1*100 : err->optimizedWeightPhase2*100, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
+        for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {            
+            if(fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive) {
+                fprintf(fp, "%d,", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
+                for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+                    modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
+                    err = &modelRun->hourlyModelStats[modelIndex];
+                    if(err->isUsable)
+                        fprintf(fp, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1 : err->optimizedWeightPhase2, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
+                }
             }
         }
         fclose(fp);
@@ -1920,14 +1922,20 @@ int runWeightedTimeSeriesAnalysis(forecastInputType *fci)
     // OK, so we've got the forecast T/S data file and the weights file
     // now we just want to run the RMSE using the two
     if(fci->runHoursAfterSunrise) {
-        for(hoursAheadIndex=0;hoursAheadIndex<fci->maxHoursAfterSunrise;hoursAheadIndex++) {
-            for(hoursAfterSunriseIndex=0;hoursAfterSunriseIndex<fci->maxHoursAfterSunrise;hoursAfterSunriseIndex++) { 
-                dumpModelMixRMSE(fci, hoursAheadIndex);
+        for(hoursAheadIndex=fci->startHourLowIndex;hoursAheadIndex<=fci->startHourHighIndex;hoursAheadIndex++) {
+            for(hoursAfterSunriseIndex=0;hoursAfterSunriseIndex<=fci->maxHoursAfterSunrise-1;hoursAfterSunriseIndex++) { 
+                computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex);  // this filters the data and does the model RMSE
+                computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex);
+                fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].optimizedRMSEphase2 = 
+                        fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].weightedModelStats.rmsePct;
             }
+            dumpHourlyOptimizedTS(fci, hoursAheadIndex);
+            dumpModelMixRMSE(fci, hoursAheadIndex);
         }
+        //printHoursAheadSummaryCsv(fci);
     }
     else {
-        for(hoursAheadIndex=0;hoursAheadIndex<=fci->startHourHighIndex;hoursAheadIndex++) {
+        for(hoursAheadIndex=fci->startHourLowIndex;hoursAheadIndex<=fci->startHourHighIndex;hoursAheadIndex++) {
             computeModelRMSE(fci, hoursAheadIndex, -1);  // this filters the data and does the model RMSE
             computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, -1); 
             fci->hoursAheadGroup[hoursAheadIndex].optimizedRMSEphase2 = fci->hoursAheadGroup[hoursAheadIndex].weightedModelStats.rmsePct;
