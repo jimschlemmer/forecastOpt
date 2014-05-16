@@ -12,6 +12,7 @@
 #define MIN_IRR -25
 #define MAX_IRR 1500
 //#define DUMP_ALL_DATA
+#define DEBUG_HAS
 
 #define IsReference 1
 #define IsNotReference 0
@@ -353,10 +354,11 @@ int readForecastFile(forecastInputType *fci)
             if(thisSample->hoursAfterSunrise >= 24)
                 thisSample->hoursAfterSunrise = 1;
             
-
-            //fprintf(stderr, "%s,%.4f,%.4f,time=%s,", fci->siteName, fci->lat, fci->lon, dtToStringDateTime(&thisSample->dateTime));
-            //fprintf(stderr, "sunrise=%s,hoursAfterSunrise=%d\n", dtToStringDateTime(&thisSample->sunrise), thisSample->hoursAfterSunrise);
-
+#ifdef DEBUG_HAS
+            fprintf(stderr, "%s,%.4f,%.4f,time=%s,", fci->siteName, fci->lat, fci->lon, dtToStringDateTime(&thisSample->dateTime));
+            fprintf(stderr, "sunrise=%s,hoursAfterSunrise=%d\n", dtToStringDateTime(&thisSample->sunrise), thisSample->hoursAfterSunrise);
+#endif
+            
 #endif
         }
 

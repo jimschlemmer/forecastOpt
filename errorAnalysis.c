@@ -464,7 +464,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
                     weightTotal += weight;               
                 }
             }                    
-            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f\n", thisSample->groundGHI, thisSample->satGHI, thisSample->weightedModelGHI);
+            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f\n", thisSample->groundGHI, thisSample->satGHI, thisSample->isValid ? thisSample->weightedModelGHI : -999);
         }
     }
     
@@ -476,7 +476,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
 int dumpHourlyOptimizedTS_HAS(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
 {
     int sampleInd, modelIndex;
-    double weight, weightTotal;
+    double weight, weightTotal, thisModelGHI;
     timeSeriesType *thisSample;
     modelStatsType *thisModelStats, *weightedModelErr;
     modelRunType *modelRun;
@@ -520,11 +520,12 @@ int dumpHourlyOptimizedTS_HAS(forecastInputType *fci, int hoursAheadIndex, int h
             fprintf(fci->optimizedTSFile.fp, "%s", dtToStringCsv2(&thisSample->dateTime)); //, thisSample->groundGHI, thisSample->weightedModelGHI);
 
             for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-                thisModelStats = &modelRun->hourlyModelStats[modelIndex];                
+                thisModelStats = &modelRun->hourlyModelStats[modelIndex];    
+                thisModelGHI = thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex];
                 if(thisModelStats->isActive) {
-                    fprintf(fci->optimizedTSFile.fp, ",%.0f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);                    
+                    fprintf(fci->optimizedTSFile.fp, ",%.0f", thisModelGHI);                    
                 }
-                if(thisModelStats->isActive && thisModelStats->optimizedWeightPhase2 > 0) {
+                if(thisModelStats->isActive && thisModelGHI > 0 && thisModelStats->optimizedWeightPhase2 > 0) { // make sure thisModelGHI != -999
                     weight = ((double) thisModelStats->optimizedWeightPhase2 )/100.0;
                     thisSample->weightedModelGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                     weightTotal += weight;               
@@ -756,7 +757,7 @@ int readModelMixFile(forecastInputType *fci)
             }
             modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];              
             modelRun->hourlyModelStats[modelIndex].isReference = False;
-            modelRun->hourlyModelStats[modelIndex].isActive = (weight != -999);
+            modelRun->hourlyModelStats[modelIndex].isActive = weight != -999;
             modelRun->hourlyModelStats[modelIndex].isUsable = (weight != -999);  // !isReference && isActive
             modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 = weight;  // set all the weights to this one weight
             modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 = weight;
@@ -950,6 +951,10 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
                         weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPhase1 : thisModelStats->optimizedWeightPhase2;
                         weight /= 100.0;  // weights are kept as ints 0-100; make 24 => .24
                         // add up weight * GHI for each included forecast model
+                        if(thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] < 0) {
+                            fprintf(stderr, "Problem: trying to add in a negative GHI: %.1f [%s, hoursAhead=%d, model=%s]\n", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex],
+                                    dtToStringCsv2(&thisSample->dateTime), hoursAhead, thisModelStats->columnName);
+                        }
                         thisSample->weightedModelGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                         weightTotal += weight;               
     #ifdef DEBUG_HAS
@@ -977,7 +982,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
         }
         for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
             thisModelStats = &modelRun->hourlyModelStats[modelIndex];
-            if(modelRun->hourlyModelStats[modelIndex].isUsable) {
+            if(modelRun->hourlyModelStats[modelIndex].isActive) {
                 weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPhase1 : thisModelStats->optimizedWeightPhase2;
                 fprintf(fci->modelMixFileOutput.fp, ",%.0f", weight);
             }
