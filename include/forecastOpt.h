@@ -87,6 +87,7 @@ typedef struct {
     double optimizedRMSEphase1;
     double optimizedRMSEphase2;
     long phase1RMSEcalls, phase2RMSEcalls, phase1SumWeightsCalls, phase2SumWeightsCalls;
+    double correctionVarA, correctionVarB;
 } modelRunType;
 
 typedef struct {
@@ -95,7 +96,8 @@ typedef struct {
 
 typedef struct {
     dateTimeType dateTime;
-    double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, weightedModelGHI;   // this is the ground data
+    double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, optimizedGHI;
+    double ktSatGHI, ktOptimizedGHI, correctedOptimizedGHI;
     modelDataType forecastData[MAX_HOURS_AHEAD];
     char isValid, sunIsUp;
     dateTimeType sunrise;
@@ -139,6 +141,7 @@ typedef struct {
     fileType modelMixFileOutput;
     fileType modelMixFileInput;
     fileType optimizedTSFile;
+    fileType correctionStatsFile;
     columnType columnInfo[MAX_MODELS * MAX_HOURS_AHEAD];
     modelRunType hoursAheadGroup[MAX_HOURS_AHEAD];
     modelRunType hoursAfterSunriseGroup[MAX_HOURS_AFTER_SUNRISE][MAX_HOURS_AFTER_SUNRISE];

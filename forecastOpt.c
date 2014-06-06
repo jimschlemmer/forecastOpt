@@ -12,7 +12,7 @@
 #define MIN_IRR -25
 #define MAX_IRR 1500
 //#define DUMP_ALL_DATA
-#define DEBUG_HAS
+//#define DEBUG_HAS
 
 #define IsReference 1
 #define IsNotReference 0
@@ -835,6 +835,7 @@ void initForecastInfo(forecastInputType *fci)
     fci->weightsFile.fp = NULL;
     fci->modelMixFileOutput.fp = NULL;
     fci->modelMixFileInput.fp = NULL;
+    fci->correctionStatsFile.fp = NULL;
     
 }
 
@@ -1211,7 +1212,7 @@ void runErrorAnalysis(forecastInputType *fci)
     if(fci->runHoursAfterSunrise) {
         for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
             int numHASwithData = 0;
-            for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+            for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
                 fprintf(stderr, "\n############ Running for hour ahead %d, hour after sunrise %d\n\n", 
                         fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAhead, fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAfterSunrise);
                 computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex);
@@ -1274,13 +1275,13 @@ void dumpHoursAfterSunrise(forecastInputType *fci)
     
     // print header
     fprintf(stderr, "\n\n#hours ahead");
-    for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) 
+    for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) 
         fprintf(stderr, "\tHAS=%02d", hoursAfterSunriseIndex+1);
     fprintf(stderr, "\n");
     
     for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
         fprintf(stderr, "%d", fci->hoursAfterSunriseGroup[hoursAheadIndex][0].hoursAhead);
-        for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+        for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
             modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
             fprintf(stderr, "\t%.1f", modelRun->optimizedRMSEphase2 * 100);
         }
@@ -1312,7 +1313,7 @@ void dump_HA_HAS_modelWeights(forecastInputType *fci)
     fprintf(fp, ",N\n");
     
     for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
-        for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+        for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
             modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
             fprintf(fp, "%d,%d", modelRun->hoursAhead, modelRun->hoursAfterSunrise);   
                 for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {    
@@ -1329,7 +1330,7 @@ void dump_HA_HAS_modelWeights(forecastInputType *fci)
     
     for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
         fprintf(stderr, "%d", fci->hoursAfterSunriseGroup[hoursAheadIndex][0].hoursAhead);
-        for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+        for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
             modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
             fprintf(stderr, "\t%.1f", modelRun->optimizedRMSEphase2 * 100);
         }
@@ -1368,13 +1369,13 @@ void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci)
         // print header
         fprintf(fp, "#For model %s: model percent by hours ahead (HA) and hours after sunrise (HAS)\n#siteName=%s,lat=%.2f,lon=%.3f,date span=%s\n#HA,",
                 getGenericModelName(fci, modelIndex), genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, fci->timeSpanStr);
-        for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) 
+        for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) 
             fprintf(fp, "HAS=%d%c", hoursAfterSunriseIndex+1, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
         
         for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {            
             if(fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive) {
                 fprintf(fp, "%d,", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
-                for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+                for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
                     modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
                     err = &modelRun->hourlyModelStats[modelIndex];
                     if(err->isUsable)
@@ -1406,7 +1407,7 @@ void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci)
     if(fci->verbose) 
         fprintf(stderr, "\nGenerating model mix percentage files by hours after sunrise...\n");
     
-    for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+    for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
         sprintf(fileName, "%s/%s.percentByHAS.HA_Model.HAS=%d.csv", fci->outputDirectory, genProxySiteName(fci), hoursAfterSunriseIndex+1);
         if((fp = fopen(fileName, "w")) == NULL) {
             sprintf(ErrStr, "Couldn't open file %s : %s", fileName, strerror(errno));
@@ -2118,19 +2119,19 @@ void dumpWeightedTimeSeries(forecastInputType *fci, int hoursAheadIndex, int hou
         thisSample = &fci->timeSeries[sampleInd];
         if(thisSample->isValid) {
             weightTotal = 0;
-            thisSample->weightedModelGHI = 0;
+            thisSample->optimizedGHI = 0;
             for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                 thisModelErr = &modelRun->hourlyModelStats[modelIndex];
                             
                 if(modelRun->hourlyModelStats[modelIndex].isActive) {
                     weight = thisModelErr->optimizedWeightPhase2;
-                    thisSample->weightedModelGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
+                    thisSample->optimizedGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                     weightTotal += weight;            
                 }            
             }        
         }
 
-        //fprintf(stderr, "DWTS: %s,%d,%f,%f,%f\n",dtToStringCsv2(&thisSample->dateTime),fci->hoursAheadGroup[hoursAheadIndex].hoursAhead,thisSample->weightedModelGHI/weightTotal,thisSample->weightedModelGHI,weightTotal);
+        //fprintf(stderr, "DWTS: %s,%d,%f,%f,%f\n",dtToStringCsv2(&thisSample->dateTime),fci->hoursAheadGroup[hoursAheadIndex].hoursAhead,thisSample->optimizedGHI/weightTotal,thisSample->optimizedGHI,weightTotal);
     }
 }
 

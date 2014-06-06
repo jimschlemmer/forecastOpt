@@ -1,5 +1,7 @@
 #include "forecastOpt.h"
 
+typedef enum {SatGHI, CorrGHI, OptGHI} mbeSelectType;
+
 /*
 STEP 2  Error calculation
 
@@ -28,6 +30,10 @@ void clearModelStats(modelStatsType *thisModelStats);
 int getHoursAheadIndex(forecastInputType *fci, int hoursAhead);
 int getHoursAfterSunriseIndex(forecastInputType *fci, int hoursAfterSunrise);
 int getModelIndex(forecastInputType *fci, char *modelName);
+int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex);
+int cmpDouble(const void *x, const void *y);
+double computeMBEcustom(forecastInputType *fci, mbeSelectType which);
+double computeMAEcustom(forecastInputType *fci, mbeSelectType which);
 
 int computeModelRMSE(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
 {
@@ -217,6 +223,66 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
     
     // all sums are now calculated
     // now do the error computations for mae, mbe, and rmse
+double computeMBEcustom(forecastInputType *fci, mbeSelectType which)
+{
+    double diff, sumModel_Ground=0, mbe, val;
+    timeSeriesType *thisSample;
+    double numValidSamples=0;
+    int sampleInd;
+#ifdef DEBUG
+    int count=0, hoursAhead = modelRun->hoursAhead;
+#endif
+    
+    for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
+        thisSample = &fci->timeSeries[sampleInd];
+        if(thisSample->isValid) {
+            switch(which) {
+                case SatGHI : val = thisSample->satGHI; break;
+                case OptGHI : val = thisSample->optimizedGHI; break;
+                case CorrGHI: val = thisSample->correctedOptimizedGHI; break;
+                default : fprintf(stderr, "Internal error in computeMBEcustom()"); exit(1);
+            }
+            diff = val - thisSample->groundGHI;
+            sumModel_Ground += diff;
+            numValidSamples += 1;
+        }
+    }
+    
+    mbe = sumModel_Ground / numValidSamples;
+    
+    return mbe;
+}
+
+double computeMAEcustom(forecastInputType *fci, mbeSelectType which)
+{
+    double diff, sumModel_Ground=0, mae, val;
+    timeSeriesType *thisSample;
+    double numValidSamples=0;
+    int sampleInd;
+#ifdef DEBUG
+    int count=0, hoursAhead = modelRun->hoursAhead;
+#endif
+    
+    for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
+        thisSample = &fci->timeSeries[sampleInd];
+        if(thisSample->isValid) {
+            switch(which) {
+                case SatGHI : val = thisSample->satGHI; break;
+                case OptGHI : val = thisSample->optimizedGHI; break;
+                case CorrGHI: val = thisSample->correctedOptimizedGHI; break;
+                default : fprintf(stderr, "Internal error in computeMAEcustom()"); exit(1);
+            }
+            // MAE = (Sum (abs(GHImod-GHIground)) ) / N
+            diff = fabs(val - thisSample->groundGHI);
+            sumModel_Ground += diff;
+            numValidSamples += 1;
+        }
+    }
+    
+    mae = sumModel_Ground / numValidSamples;
+    
+    return mae;
+}
 
 int computeHourlyBiasErrors(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
 {
@@ -425,7 +491,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
             fprintf(fci->optimizedTSFile.fp, ",%s", getGenericModelName(fci, modelIndex));
         }
     }
-    fprintf(fci->optimizedTSFile.fp, ",groundGHI,satGHI,optimizedGHI\n");
+    fprintf(fci->optimizedTSFile.fp, ",groundGHI,satGHI,optimizedGHI,correctedGHI,clearskyGHI\n");
 
     weightedModelErr = &modelRun->weightedModelStats;
     weightedModelErr->sumModel_Ground_2 = 0;
@@ -435,13 +501,44 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
         return False;
     }
     
+    // compute optimizedGHI, ktClearsky, ktOptimizedGHI
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
         thisSample = &fci->timeSeries[sampleInd];
         if(thisSample->sunIsUp) {
             // instead of each model having a separate rmse, they will have a composite rmse
             weightTotal = 0;
-            thisSample->weightedModelGHI = 0;
-            fprintf(fci->optimizedTSFile.fp, "%s", dtToStringCsv2(&thisSample->dateTime)); //, thisSample->groundGHI, thisSample->weightedModelGHI);
+            thisSample->optimizedGHI = 0;
+            modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][thisSample->hoursAfterSunrise - 1] : &fci->hoursAheadGroup[hoursAheadIndex];
+
+            for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+                thisModelStats = &modelRun->hourlyModelStats[modelIndex];                
+                if(thisModelStats->isActive && thisModelStats->optimizedWeightPhase2 > 0) {
+                    weight = ((double) thisModelStats->optimizedWeightPhase2 )/100.0;
+                    thisSample->optimizedGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
+                    weightTotal += weight;               
+                }
+            }    
+            
+            if(thisSample->clearskyGHI > 10) {
+                thisSample->ktSatGHI = thisSample->satGHI/thisSample->clearskyGHI;
+                thisSample->ktOptimizedGHI = thisSample->optimizedGHI/thisSample->clearskyGHI;
+/*
+                if(thisSample->ktSatGHI > 1.01 || thisSample->ktOptimizedGHI > 1.01)
+                    fprintf(stderr, "Badval\n");
+*/
+            }        
+        }
+    }
+    
+    correctOptimizedGHI(fci, hoursAheadIndex);
+    
+    // now print it all out to the TS output file
+    for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
+        thisSample = &fci->timeSeries[sampleInd];
+        if(thisSample->sunIsUp) {
+            modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][thisSample->hoursAfterSunrise - 1] : &fci->hoursAheadGroup[hoursAheadIndex];
+            
+            fprintf(fci->optimizedTSFile.fp, "%s", dtToStringCsv2(&thisSample->dateTime)); //, thisSample->groundGHI, thisSample->optimizedGHI);
             if(fci->runHoursAfterSunrise) {
                 hoursAfterSunrise = thisSample->hoursAfterSunrise - 1;
                 if(hoursAfterSunrise > fci->maxHoursAfterSunrise) {
@@ -449,22 +546,21 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
                     FatalError("dumpHourlyOptimizedTS()", ErrStr);
                 }
             }
-            modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][thisSample->hoursAfterSunrise - 1] : &fci->hoursAheadGroup[hoursAheadIndex];
             if(fci->runHoursAfterSunrise) 
                 fprintf(fci->optimizedTSFile.fp, ",%d", modelRun->hoursAfterSunrise);
             fprintf(fci->optimizedTSFile.fp, ",%s", thisSample->isValid ? "yes" : "no");
+            
+
             for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                 thisModelStats = &modelRun->hourlyModelStats[modelIndex];                
                 if(thisModelStats->isActive) {
                     fprintf(fci->optimizedTSFile.fp, ",%.0f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);                    
                 }
-                if(thisModelStats->isActive && thisModelStats->optimizedWeightPhase2 > 0) {
-                    weight = ((double) thisModelStats->optimizedWeightPhase2 )/100.0;
-                    thisSample->weightedModelGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
-                    weightTotal += weight;               
-                }
-            }                    
-            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f\n", thisSample->groundGHI, thisSample->satGHI, thisSample->isValid ? thisSample->weightedModelGHI : -999);
+            }
+            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f,%.0f,%.0f\n", thisSample->groundGHI, thisSample->satGHI, 
+                    thisSample->isValid ? thisSample->optimizedGHI : -999, 
+                    thisSample->isValid ? thisSample->correctedOptimizedGHI : -999, 
+                    thisSample->clearskyGHI);            
         }
     }
     
@@ -473,7 +569,142 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
     return True;
 }
 
-int dumpHourlyOptimizedTS_HAS(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
+#define DEBUG_CORRECTION
+int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
+{
+    int sampleInd;
+    timeSeriesType *thisSample;
+    modelRunType *modelRun;
+    static double *sortedKtSatGHI=NULL, *sortedKtOptimizedGHI=NULL;
+    static int sortedSize = 0;
+    double satMAE, satMBE, optMAEpre, optMBEpre, optMAEpost, optMBEpost;
+    
+    modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][0] : &fci->hoursAheadGroup[hoursAheadIndex];
+   
+    if(sortedKtSatGHI == NULL) { 
+        sortedSize = fci->numTotalSamples;
+        if((sortedKtSatGHI = (double *) malloc(sizeof(double) * sortedSize) ) == NULL)
+            FatalError("correctOptimizedGHI()", "Memory allocation error");
+        if((sortedKtOptimizedGHI = (double *) malloc(sizeof(double) * sortedSize) ) == NULL)
+            FatalError("correctOptimizedGHI()", "Memory allocation error");        
+    }
+    else if(sortedSize != fci->numTotalSamples) {
+        fprintf(stderr, "numSamples changed from %d to %d\n", sortedSize, fci->numTotalSamples);
+        FatalError("correctOptimizedGHI()", "bye"); 
+        
+    }
+    
+    if(fci->correctionStatsFile.fp == NULL) {
+        char tempFileName[1024];
+        sprintf(tempFileName, "%s/correctionStats.%s.%s-%s.div=%d.hours=%d-%d.csv", fci->outputDirectory, genProxySiteName(fci), dtToStringDateOnly(&fci->startDate), dtToStringDateOnly(&fci->endDate), fci->numDivisions, fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead);
+        fci->correctionStatsFile.fileName = strdup(tempFileName);
+        if((fci->correctionStatsFile.fp = fopen(fci->correctionStatsFile.fileName, "w")) == NULL) {
+            sprintf(ErrStr, "couldn't open file %s", fci->correctionStatsFile.fileName);
+            FatalError("correctOptimizedGHI()", ErrStr);             
+        }
+        fprintf(fci->correctionStatsFile.fp, "#site,HA,A,B,satMAE,satMBE,optMAEpre,optMBEpre,optMAEpost,optMBEpost\n");
+    }
+    
+    // first load up the kt vectors
+#ifdef DEBUG_CORRECTION
+    fprintf(stderr, "#year,month,day,hour,clr,satGHI,optGHI,ratioSat,ratioOpt\n");
+#endif
+    for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
+        thisSample = &fci->timeSeries[sampleInd];
+        sortedKtSatGHI[sampleInd] = 0;
+        sortedKtOptimizedGHI[sampleInd] = 0;
+        if(thisSample->sunIsUp && thisSample->isValid && thisSample->clearskyGHI > 200) {
+            sortedKtSatGHI[sampleInd] = round(thisSample->satGHI)/thisSample->clearskyGHI;
+            sortedKtOptimizedGHI[sampleInd] = round(thisSample->optimizedGHI)/thisSample->clearskyGHI;
+        }
+#ifdef DEBUG_CORRECTION
+        fprintf(stderr, "%s,%.0f,%.0f,%.0f,%.4f,%.4f\n", dtToStringCsv2(&thisSample->dateTime), thisSample->clearskyGHI, thisSample->satGHI, thisSample->optimizedGHI, sortedKtSatGHI[sampleInd], sortedKtOptimizedGHI[sampleInd]);
+    }
+#endif
+    // now sort them
+    //qsort(arr, sizeof(arr)/sizeof(arr[0]), sizeof(arr[0]), cmp);
+    qsort(sortedKtSatGHI, sortedSize, sizeof(double), cmpDouble);
+    qsort(sortedKtOptimizedGHI, sortedSize, sizeof(double), cmpDouble);
+
+    // get N
+    int i;
+    double N=0,sumSat, sumOpt;
+    for(i=0; i<sortedSize; i++) {
+        if(sortedKtSatGHI[i] < 0.95) {
+            N = i+1;
+            break;
+        }
+        sumSat += sortedKtSatGHI[i];
+        sumOpt += sortedKtOptimizedGHI[i];
+#ifdef DEBUG_CORRECTION
+        //fprintf(stderr, "%d : satKt=%.4f optKt=%.4f\n", i, sortedKtSatGHI[i], sortedKtOptimizedGHI[i]);
+        fprintf(stderr, "%.4f,%.4f,%.8f,%.8f\n", sortedKtSatGHI[i], sortedKtOptimizedGHI[i],sortedKtSatGHI[i], sortedKtOptimizedGHI[i]);
+#endif
+    }
+    if(N < 1) {
+        sprintf(ErrStr, "Internal error: N=0, sortedSize=%d\n", sortedSize);
+        FatalError("correctOptimizedGHI()", ErrStr);
+    }
+    
+    // calculate average sortedKtSatGHI and sortedKtOptimizedGHI for first N values    
+    double SatHiAvg = sumSat/N;
+    double OptHiAvg = sumOpt/N;
+    
+    modelRun->correctionVarA = SatHiAvg/OptHiAvg;
+#ifdef DEBUG_CORRECTION
+    fprintf(stderr, "\nN=%.0f SatHiAvg = %.4f OptHiAvg = %.4f correctionVarA = %.4f\n", N, SatHiAvg, OptHiAvg, modelRun->correctionVarA);
+#endif
+    
+    // iterate MBE calculation 
+    // int computeHourlyBiasErrors(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
+
+    modelRun->correctionVarB = 1.01;
+       
+    satMAE = computeMAEcustom(fci, SatGHI);
+    satMBE = computeMBEcustom(fci, SatGHI);
+    optMAEpre = computeMAEcustom(fci, OptGHI);
+    optMBEpre = computeMBEcustom(fci, OptGHI);
+
+    // COR = B + (A-B) * optIndex
+    // X = MIN(1.025, COR * optIndex)
+    // GHICor = X * GHIclear
+    do {
+        modelRun->correctionVarB -= 0.01;  // decrement B
+        for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {  // using A & B recompute TS optGHI as correctedOptimizedGHI
+            thisSample = &fci->timeSeries[sampleInd];
+            if(thisSample->sunIsUp && thisSample->isValid && thisSample->clearskyGHI > 10) {
+                double COR = modelRun->correctionVarB + (modelRun->correctionVarA - modelRun->correctionVarB) * thisSample->ktOptimizedGHI;
+                double X = MIN(1.025, COR * thisSample->ktOptimizedGHI);
+                thisSample->correctedOptimizedGHI = X * thisSample->clearskyGHI;
+#ifdef DEBUG_CORRECTION_A
+                fprintf(stderr, "A=%.4f B=%.4f ktOpt=%.4f COR=%.4f X=%.4f clearGHI=%.1f corrOptGHI=%.1f\n", modelRun->correctionVarA, modelRun->correctionVarB, thisSample->ktOptimizedGHI, COR, X, thisSample->clearskyGHI, thisSample->correctedOptimizedGHI);
+#endif
+            }
+        }
+        
+        optMAEpost = computeMAEcustom(fci, CorrGHI);
+        optMBEpost = computeMBEcustom(fci, CorrGHI);
+#ifdef DEBUG_CORRECTION
+        fprintf(stderr, "A=%.3f B=%.4f satMBE=%.3f optMBE=%.3f\n", modelRun->correctionVarA, modelRun->correctionVarB, satMBE, optMBEpost);
+#endif
+
+    } while(optMBEpost > satMBE && modelRun->correctionVarB > 0);
+    
+    fprintf(fci->correctionStatsFile.fp, "%s,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n", genProxySiteName(fci), modelRun->hoursAhead, modelRun->correctionVarA, 
+            modelRun->correctionVarB, satMAE, satMBE, optMAEpre, optMBEpre, optMAEpost, optMBEpost);
+
+    return True;
+}
+
+int cmpDouble(const void *x, const void *y)
+{
+  double xx = *(double*)x, yy = *(double*)y;
+  if (xx > yy) return -1;
+  if (xx < yy) return  1;
+  return 0;
+}
+
+int dumpHourlyOptimizedTS_HAS_depricated(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
 {
     int sampleInd, modelIndex;
     double weight, weightTotal, thisModelGHI;
@@ -516,8 +747,8 @@ int dumpHourlyOptimizedTS_HAS(forecastInputType *fci, int hoursAheadIndex, int h
         if(thisSample->isValid) {
             // instead of each model having a separate rmse, they will have a composite rmse
             weightTotal = 0;
-            thisSample->weightedModelGHI = 0;
-            fprintf(fci->optimizedTSFile.fp, "%s", dtToStringCsv2(&thisSample->dateTime)); //, thisSample->groundGHI, thisSample->weightedModelGHI);
+            thisSample->optimizedGHI = 0;
+            fprintf(fci->optimizedTSFile.fp, "%s", dtToStringCsv2(&thisSample->dateTime)); //, thisSample->groundGHI, thisSample->optimizedGHI);
 
             for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                 thisModelStats = &modelRun->hourlyModelStats[modelIndex];    
@@ -527,11 +758,11 @@ int dumpHourlyOptimizedTS_HAS(forecastInputType *fci, int hoursAheadIndex, int h
                 }
                 if(thisModelStats->isActive && thisModelGHI > 0 && thisModelStats->optimizedWeightPhase2 > 0) { // make sure thisModelGHI != -999
                     weight = ((double) thisModelStats->optimizedWeightPhase2 )/100.0;
-                    thisSample->weightedModelGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
+                    thisSample->optimizedGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                     weightTotal += weight;               
                 }
             }                    
-            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f\n", thisSample->groundGHI, thisSample->satGHI, thisSample->weightedModelGHI);
+            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f\n", thisSample->groundGHI, thisSample->satGHI, thisSample->optimizedGHI);
         }
     }
     
@@ -578,17 +809,17 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, 
 #endif
             // instead of each model having a separate rmse, they will have a composite rmse
             weightTotal = 0;
-            thisSample->weightedModelGHI = 0;
+            thisSample->optimizedGHI = 0;
             for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                 thisModelStats = &modelRun->hourlyModelStats[modelIndex];
                 if(thisModelStats->isActive && thisModelStats->weight > 0) {
                     weight = ((double) thisModelStats->weight)/100.0;
-                    thisSample->weightedModelGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
+                    thisSample->optimizedGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                     weightTotal += weight;               
 #ifdef DEBUG_2
                     if(hoursAhead == DEBUGHOUR && weight > 0.01) {
                             fprintf(stderr, "DEBUG:%s,%s=%.1f,weight=%.2f,weightedGHI=%.1f\n", dtToStringCsv2(&thisSample->dateTime),
-                                    getGenericModelName(fci, modelIndex),thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex],weight,thisSample->weightedModelGHI);
+                                    getGenericModelName(fci, modelIndex),thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex],weight,thisSample->optimizedGHI);
                     }
 #endif
                 }
@@ -598,7 +829,7 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, 
                 fprintf(stderr, "Internal Error: model weights sum to %.2f\n", weightTotal);
 */
             
-            diff = thisSample->weightedModelGHI - thisSample->groundGHI;
+            diff = thisSample->optimizedGHI - thisSample->groundGHI;
             weightedModelErr->sumModel_Ground_2 += (diff * diff);
         }
     }
@@ -791,7 +1022,7 @@ int getHoursAfterSunriseIndex(forecastInputType *fci, int hoursAfterSunrise)
 {
     int hoursAfterSunriseIndex;
     
-    for(hoursAfterSunriseIndex=fci->startHourLowIndex; hoursAfterSunriseIndex<=fci->startHourHighIndex; hoursAfterSunriseIndex++) {
+    for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex<=fci->startHourHighIndex; hoursAfterSunriseIndex++) {
         if(fci->hoursAfterSunriseGroup[0][hoursAfterSunriseIndex].hoursAfterSunrise == hoursAfterSunrise)
              return hoursAfterSunriseIndex;
     }
@@ -940,7 +1171,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
     #endif
                 // instead of each model having a separate rmse, they will have a composite rmse
                 weightTotal = 0;
-                thisSample->weightedModelGHI = 0;
+                thisSample->optimizedGHI = 0;
                 
                 N++;
                 meanMeasuredGHI += thisSample->groundGHI;
@@ -955,7 +1186,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
                             fprintf(stderr, "Problem: trying to add in a negative GHI: %.1f [%s, hoursAhead=%d, model=%s]\n", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex],
                                     dtToStringCsv2(&thisSample->dateTime), hoursAhead, thisModelStats->columnName);
                         }
-                        thisSample->weightedModelGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
+                        thisSample->optimizedGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                         weightTotal += weight;               
     #ifdef DEBUG_HAS
                         //if(hoursAhead == DEBUGHOUR && weightedModelErr->weight > 0.01*/) {
@@ -969,12 +1200,12 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
                     }
                 }
 #ifdef DEBUG_HAS
-                fprintf(stderr, "weightedGHI=%.1f,groundGHI=%.1f\n",thisSample->weightedModelGHI, thisSample->groundGHI);
+                fprintf(stderr, "weightedGHI=%.1f,groundGHI=%.1f\n",thisSample->optimizedGHI, thisSample->groundGHI);
 #endif
                 if(weightTotal > 1.5 || weightTotal < 0.5) 
                     fprintf(stderr, "Internal Error: model weights sum to %.2f\n", weightTotal);
 
-                diff = thisSample->weightedModelGHI - thisSample->groundGHI;
+                diff = thisSample->optimizedGHI - thisSample->groundGHI;
                 weightedModelErr->sumModel_Ground_2 += (diff * diff);
                 diff = thisSample->satGHI - thisSample->groundGHI;
                 satModelErr->sumModel_Ground_2 += (diff * diff);
