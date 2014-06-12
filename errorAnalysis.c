@@ -649,8 +649,13 @@ int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
     // calculate average sortedKtSatGHI and sortedKtOptimizedGHI for first N values    
     double SatHiAvg = sumSat/N;
     double OptHiAvg = sumOpt/N;
-    
+//#define HARD_WIRED_A_B      
+#ifdef HARD_WIRED_A_B
+    modelRun->correctionVarA = 1.04;
+
+#else
     modelRun->correctionVarA = SatHiAvg/OptHiAvg;
+#endif
 #ifdef DEBUG_CORRECTION
     fprintf(stderr, "\nN=%.0f SatHiAvg = %.4f OptHiAvg = %.4f correctionVarA = %.4f\n", N, SatHiAvg, OptHiAvg, modelRun->correctionVarA);
 #endif
@@ -658,7 +663,6 @@ int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
     // iterate MBE calculation 
     // int computeHourlyBiasErrors(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
 
-    modelRun->correctionVarB = 1.01;
        
     satMAE = computeMAEcustom(fci, SatGHI);
     satMBE = computeMBEcustom(fci, SatGHI);
@@ -668,8 +672,15 @@ int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
     // COR = B + (A-B) * optIndex
     // X = MIN(1.025, COR * optIndex)
     // GHICor = X * GHIclear
+    modelRun->correctionVarB = 1.01;
+    
     do {
+#ifdef HARD_WIRED_A_B
+        modelRun->correctionVarB = 0.7;  // Temporary test
+#else
         modelRun->correctionVarB -= 0.01;  // decrement B
+#endif
+
         for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {  // using A & B recompute TS optGHI as correctedOptimizedGHI
             thisSample = &fci->timeSeries[sampleInd];
             if(thisSample->sunIsUp && thisSample->isValid && thisSample->clearskyGHI > 10) {
@@ -688,7 +699,11 @@ int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
         fprintf(stderr, "A=%.3f B=%.4f satMBE=%.3f optMBE=%.3f\n", modelRun->correctionVarA, modelRun->correctionVarB, satMBE, optMBEpost);
 #endif
 
+#ifdef HARD_WIRED_A_B        
+    } while(0 && optMBEpost > satMBE && modelRun->correctionVarB > 0);
+#else
     } while(optMBEpost > satMBE && modelRun->correctionVarB > 0);
+#endif
     
     fprintf(fci->correctionStatsFile.fp, "%s,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n", genProxySiteName(fci), modelRun->hoursAhead, modelRun->correctionVarA, 
             modelRun->correctionVarB, satMAE, satMBE, optMAEpre, optMBEpre, optMAEpost, optMBEpost);
