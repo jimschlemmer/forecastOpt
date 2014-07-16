@@ -13,7 +13,6 @@
 
 #include <time.h>
 #include <ctype.h>
-#include <malloc.h>
 #include <math.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -23,7 +22,6 @@
 #include <libgen.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <dbi/dbi.h>
 #include <errno.h>
 extern int errno;
 
@@ -59,6 +57,9 @@ extern "C" {
 // header strings for output .csv files that possibly need to be scanned for later
 #define WEIGHT_1_STR "weight 1"
 #define WEIGHT_2_STR "weight 2"
+
+#define MIN_IRR -25
+#define MAX_IRR 1500
 
 typedef enum { MKunset, regular } modelKindType;
 
@@ -172,6 +173,7 @@ typedef struct {
     int numDaylightRecords;
     char runWeightedErrorAnalysis;
     char *forecastHeaderLine;
+    char *delimiter;
     int forecastLineNumber;
     char runOptimizer, skipPhase2;
     char runHoursAfterSunrise;
