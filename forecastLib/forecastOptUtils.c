@@ -1,44 +1,7 @@
 #include "forecastOpt.h"
+#include "forecastOptUtils.h"
 
 char ErrStr[4096];
-
-#define IsReference 1
-#define IsNotReference 0
-#define IsForecast 1
-#define IsNotForecast 0
-
-void initForecastInfo(forecastInputType *fci);
-void incrementTimeSeries(forecastInputType *fci);
-int  readForecastFile(forecastInputType *fci);
-int  readDataFromLine(forecastInputType *fci, char *fields[]);
-int  parseDateTime(forecastInputType *fci, dateTimeType *dt, char *dateTimeStr);
-int  parseHourIndexes(forecastInputType *fci, char *optarg);
-void scanHeaderLine(forecastInputType *fci);
-int  parseArgs(forecastInputType *fci, int argC, char **argV);
-void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int isReference, int isForecast, int maxHoursAhead);
-void getNumberOfHoursAhead(forecastInputType *fci, char *origLine);
-void printByHour(forecastInputType *fci);
-void printByModel(forecastInputType *fci);
-void printByAnalysisType(forecastInputType *fci);
-char *getColumnNameByHourModel(forecastInputType *fci, int hrInd, int modInd);
-FILE *openErrorTypeFile(forecastInputType *fci, char *fileNameStr);
-void printRmseTableHour(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex);
-FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int hoursAheadIndex , int hoursAfterSunriseIndex);
-void registerSiteModel(siteType *si, char *modelName, int maxHoursAhead);
-void setSite(forecastInputType *fci);
-int  checkModelAgainstSite(forecastInputType *fci, char *modelName);
-void setSiteInfo(forecastInputType *fci, char *line);
-void dumpWeightedTimeSeries(forecastInputType *fci,int hoursAheadIndex, int hoursAfterSunriseIndex);
-int runWeightedTimeSeriesAnalysis(forecastInputType *fci);
-int readSummaryFile(forecastInputType *fci);
-void studyData(forecastInputType *fci);
-char *stripQuotes(char *str);
-void stripComment(char *str);
-int parseNumberFromString(char *str);
-void copyHoursAfterData(forecastInputType *fci);
-void dumpHoursAfterSunrise(forecastInputType *fci);
-void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci);
-void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci);
 
 int  allocatedSamples, HashLineNumber=1;
 
@@ -669,6 +632,8 @@ void initForecastInfo(forecastInputType *fci)
     fci->numColumnInfoEntries = 0;
     fci->numInputRecords = 0;
     fci->numDaylightRecords = 0;
+    fci->genModelMixPermutations = True;
+    fci->modelMixDirectory = "modelMixes";
 
     for(i=0; i<MAX_HOURS_AHEAD; i++) {
         fci->hoursAheadGroup[i].hoursAhead = -1;       
@@ -1845,4 +1810,87 @@ char *parseEquals(char *inString)
     }
     
     return fields[1];
+}
+
+/*
+The forecast optimizer will assume a fixed set of input models.  However, in the real
+world, not all models will be available at all times.  If, for example, the CM model
+is down and has a non-zero weight for some forecast horizons, optimizer GHI's will be off.  So
+we need to have model mix sets for all the scenarios so that the weights of active channels
+add up to 1.
+*/
+        
+// We create a permutation matrix that represents on/off switches for all the input 
+// models.  Something, like:
+/*
+1 1 1 1 1 1  <= all models active
+1 1 1 1 1 0
+1 1 1 1 0 1
+1 1 1 1 0 0
+1 1 1 0 1 1
+1 1 1 0 1 0  <= 4 on, 2 off
+[...]
+*/
+// should be 2^numModels permutations minus the empty case.  So for five forecast
+// models we'd expect 31 permutations, including the 5 trivial cases.  
+
+void permuteRecursively(int pos, forecastInputType *fci)
+{
+    if(pos == (fci->numModels - 1)) {
+        fci->perm.switches[fci->perm.numPermutations][pos] = 0;
+        fci->perm.numPermutations++;
+        fci->perm.switches[fci->perm.numPermutations][pos] = 1;
+        fci->perm.numPermutations++;
+        return;
+    }
+    
+    fci->perm.switches[fci->perm.numPermutations][pos] = 0;
+    permuteRecursively(pos+1, fci);
+    fci->perm.switches[fci->perm.numPermutations][pos] = 1;
+    permuteRecursively(pos+1, fci);
+}
+
+void genPermutationMatrix(forecastInputType *fci)
+{
+    int i;
+    
+    if(fci->numModels < 2) {
+        FatalError("genPermutationMatrix()", "got numModels < 2!");
+    }
+    
+    fci->perm.maxPermutations = pow(2, fci->numModels);
+    fci->perm.numPermutations = 0;
+    fci->perm.switches = (char **) malloc(fci->perm.maxPermutations * sizeof(char *));
+    for(i=0; i<fci->perm.maxPermutations; i++) {
+        fci->perm.switches[i] = (char *) malloc(fci->numModels * sizeof(char *));
+    }
+    
+    permuteRecursively(0, fci);
+}
+
+#define PERM_DEBUG
+void setPermutation(forecastInputType *fci, int permNumber)
+{
+    int modelNum, hoursAheadIndex, hoursAfterSunriseIndex;
+    
+#ifdef PERM_DEBUG
+    fprintf(stderr, "setPermutation: setting forecast models according to switches :");
+    for(modelNum=0; modelNum<=fci->numModels; modelNum++) {
+        fprintf(stderr, "%c ", fci->perm.switches[permNumber][modelNum]);
+    }
+    fprintf(stderr, "\n");
+#endif
+    
+    // set all model run instances to the appropriate 'isActive' state
+    for(modelNum=0; modelNum<=fci->numModels; modelNum++) {
+        int isActive = fci->perm.switches[permNumber][modelNum];
+    
+        for(hoursAheadIndex=0;hoursAheadIndex<fci->maxHoursAfterSunrise;hoursAheadIndex++) {
+            for(hoursAfterSunriseIndex=0;hoursAfterSunriseIndex<fci->maxHoursAfterSunrise;hoursAfterSunriseIndex++) {
+                    fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hourlyModelStats[modelNum].isActive = isActive;
+            }
+            fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelNum].isActive = isActive;
+        }
+    }
+
 }

@@ -6,6 +6,7 @@
                    projectFiles="true"
                    root="../forecastLib">
       <itemPath>../forecastLib/Makefile.forecastLib</itemPath>
+      <itemPath>../forecastLib/errorAnalysis.c</itemPath>
       <itemPath>../forecastLib/forecastOptUtils.c</itemPath>
       <itemPath>../forecastLib/gridDateTime.c</itemPath>
       <itemPath>../forecastLib/ioUtils.c</itemPath>
@@ -13,7 +14,6 @@
       <itemPath>../forecastLib/timeUtils.c</itemPath>
     </logicalFolder>
     <df root="." name="0">
-      <in>errorAnalysis.c</in>
       <in>forecastOpt.c</in>
       <in>optimizer.c</in>
     </df>
@@ -23,6 +23,7 @@
                    root="../include">
       <itemPath>../include/carp.h</itemPath>
       <itemPath>../include/forecastOpt.h</itemPath>
+      <itemPath>../include/forecastOptUtils.h</itemPath>
       <itemPath>../include/gridDateTime.h</itemPath>
       <itemPath>../include/gridded.h</itemPath>
       <itemPath>../include/ioUtils.h</itemPath>
@@ -62,28 +63,28 @@
             <incDir>
               <pElem>../include</pElem>
             </incDir>
-            <preprocessorList>
-              <Elem>_OPTIMIZE__=1</Elem>
-            </preprocessorList>
-            <undefinedList>
-              <Elem>__NO_INLINE__</Elem>
-            </undefinedList>
           </cTool>
         </makeTool>
       </makefileType>
-      <item path="../forecastLib/forecastOptUtils.c" ex="false" tool="0" flavor2="2">
+      <item path="../forecastLib/errorAnalysis.c" ex="false" tool="0" flavor2="2">
         <cTool>
         </cTool>
       </item>
-      <item path="../forecastLib/gridDateTime.c" ex="false" tool="0" flavor2="0">
+      <item path="../forecastLib/forecastOptUtils.c" ex="false" tool="0" flavor2="0">
       </item>
-      <item path="../forecastLib/ioUtils.c" ex="false" tool="0" flavor2="0">
+      <item path="../forecastLib/gridDateTime.c" ex="false" tool="0" flavor2="2">
+        <cTool>
+        </cTool>
       </item>
-      <item path="../forecastLib/sunae.c" ex="false" tool="0" flavor2="0">
+      <item path="../forecastLib/ioUtils.c" ex="false" tool="0" flavor2="2">
+        <cTool>
+        </cTool>
       </item>
-      <item path="../forecastLib/timeUtils.c" ex="false" tool="0" flavor2="0">
+      <item path="../forecastLib/sunae.c" ex="false" tool="0" flavor2="2">
+        <cTool>
+        </cTool>
       </item>
-      <item path="errorAnalysis.c" ex="false" tool="0" flavor2="2">
+      <item path="../forecastLib/timeUtils.c" ex="false" tool="0" flavor2="2">
         <cTool>
         </cTool>
       </item>

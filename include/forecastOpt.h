@@ -133,12 +133,19 @@ typedef struct {
 } fileType;
 
 typedef struct {
+    int numPermutations;
+    int maxPermutations;
+    char **switches;
+} permutationType;
+
+typedef struct {
     fileType forecastTableFile;
     fileType warningsFile;
     fileType descriptionFile;
     fileType weightsFile;
     fileType modelsAttendenceFile;
     fileType summaryFile;
+    char *modelMixDirectory;
     fileType modelMixFileOutput;
     fileType modelMixFileInput;
     fileType optimizedTSFile;
@@ -180,6 +187,8 @@ typedef struct {
     int maxHoursAfterSunrise;
     char gotConfig, gotForecast;
     char timeSpanStr[256];
+    char genModelMixPermutations;
+    permutationType perm;
 } forecastInputType;
 
 int computeModelRMSE(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
@@ -203,6 +212,7 @@ void dumpNumModelsReportingTable(forecastInputType *fci);
 char *genProxySiteName(forecastInputType *fci);
 int readModelMixFile(forecastInputType *fci);
 int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex);
+void genPermutationMatrix(forecastInputType *fci);
 
 #endif	/* FORECASTOPT_H */
 

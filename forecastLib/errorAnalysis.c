@@ -567,7 +567,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
     return True;
 }
 
-#define DEBUG_CORRECTION
+//#define DEBUG_CORRECTION
 int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
 {
     int sampleInd;
@@ -617,8 +617,8 @@ int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
         }
 #ifdef DEBUG_CORRECTION
         fprintf(stderr, "%s,%.0f,%.0f,%.0f,%.4f,%.4f\n", dtToStringCsv2(&thisSample->dateTime), thisSample->clearskyGHI, thisSample->satGHI, thisSample->optimizedGHI, sortedKtSatGHI[sampleInd], sortedKtOptimizedGHI[sampleInd]);
-    }
 #endif
+    }
     // now sort them
     //qsort(arr, sizeof(arr)/sizeof(arr[0]), sizeof(arr[0]), cmp);
     qsort(sortedKtSatGHI, sortedSize, sizeof(double), cmpDouble);

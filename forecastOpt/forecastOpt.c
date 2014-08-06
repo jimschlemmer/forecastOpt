@@ -6,8 +6,9 @@
  */
 
 #include "forecastOpt.h"
+#include "forecastOptUtils.h"
 
-#define VERSION "1.0"
+#define VERSION "1.1"
 
 //#define DUMP_ALL_DATA
 //#define DEBUG_HAS
@@ -52,7 +53,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     //static char tabDel[32];
     //sprintf(tabDel, "%c", 9);  // ascii 9 = TAB
     
-    while ((c=getopt(argC, argV, "b:kfa:c:dto:s:HhvVr:mw:")) != EOF) {
+    while ((c=getopt(argC, argV, "b:kpfa:c:dto:s:HhvVr:mw:")) != EOF) {
         switch (c) {
             case 'd': { fci->delimiter = ",";
                         break; }
@@ -84,7 +85,6 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                         return False;
                         }
                         break; }
-                 
             case 'h': help();
                       return(False);
             case 'V': version();
@@ -100,6 +100,8 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
             case 'w': { fci->modelMixFileInput.fileName = strdup(optarg);
                         fci->runWeightedErrorAnalysis = True;
                         break; }
+            case 'p': { fci->genModelMixPermutations = False; } 
+            
             default:  return False;         
         }       
     }  
@@ -121,15 +123,17 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
 void help(void) 
 {
     version();
-    printf( "usage: %s [-dsmhvV] [-r beginHourIndex,endHourIndex] [-a begin,end] [-o outputDir] [-b divisions] -c configFile forecastFile\n", Progname);
+    printf( "usage: %s [-dsmpkvh] [-r beginHourIndex,endHourIndex] [-a begin,end] [-o outputDir] [-b divisions] -c configFile forecastFile\n", Progname);
     printf( "where: -d = comma separated input [TAB]\n");
-    printf( "       -s max hours after sunrise\n");
-    printf( "       -k skip phase 2 optimization\n");
-    printf( "       -b divisions = specify how many intervals the 0..100 weight range is divided into [def=7]\n");    
+    printf( "       -s maxHours = set max hours after sunrise\n");
+    printf( "       -m = input data file contains multiple sites (concatenated)\n");
+    printf( "       -p = don't generate all model mix permutations -- just what's in conf file\n");
+    printf( "       -k = skip phase 2 optimization\n");
     printf( "       -r beginHourIndex,endHourIndex = specify which hour ahead indexes to start and end with\n");
-    printf( "       -m input data file contains multiple sites (concatenated)\n");
-    printf( "       -c configFile = specify config file\n");
+    printf( "       -a begin,end = specify begin and end dates in YYYYMMDD,YYYYMMDD format\n");
     printf( "       -o outputDir = specify where output files go\n");
+    printf( "       -b divisions = specify how many intervals the 0..100 weight range is divided into [def=7]\n");    
+    printf( "       -c configFile = specify config file\n");
     printf( "       -v = be versbose\n");
     printf( "       -h = help\n");
     printf( "       forecastFile = .csv forecast file\n");
@@ -152,13 +156,24 @@ void processForecast(forecastInputType *fci)
     fprintf(stderr, "=== Weight sum range: %d to %d\n", fci->weightSumLowCutoff, fci->weightSumHighCutoff);
 
     readForecastFile(fci);
+    
     if(fci->runHoursAfterSunrise) 
         copyHoursAfterData(fci);
     fprintf(stderr, "=== Hours Ahead: %d to %d\n", fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead);
     fprintf(stderr, "=== Number of    input records: %d\n", fci->numInputRecords);
     fprintf(stderr, "=== Number of daylight records: %d\n", fci->numDaylightRecords);
-                
-    runErrorAnalysis(fci);
+               
+    if(fci->genModelMixPermutations) {
+        int i;
+        genPermutationMatrix(fci);
+        for(i=0; i<=fci->perm.numPermutations; i++) {
+            setPermutation(fci, i);  // set the models on/off switches according to perm
+            runErrorAnalysis(fci);
+        }
+    }
+    else {
+        runErrorAnalysis(fci);
+    }
      
     fprintf(stderr, "=== Ending at %s\n", timeOfDayStr());
     fprintf(stderr, "=== Elapsed time: %s\n", getElapsedTime(start));
