@@ -58,7 +58,7 @@
           <buildCommandWorkingDir>.</buildCommandWorkingDir>
           <buildCommand>${MAKE} -f Makefile</buildCommand>
           <cleanCommand>${MAKE} -f Makefile clean</cleanCommand>
-          <executablePath>.</executablePath>
+          <executablePath>forecastOpt</executablePath>
           <cTool>
             <incDir>
               <pElem>../include</pElem>

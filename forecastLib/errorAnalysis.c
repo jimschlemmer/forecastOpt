@@ -1086,7 +1086,7 @@ void dumpNumModelsReportingTable(forecastInputType *fci)
             for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) { 
                 numModelsReporting = 0;
                 for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-                    if(fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isUsable)  // is this model turned on for this hoursAhead?
+                    if(fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isContributingModel)  // is this model turned on for this hoursAhead?
                         if(thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] >= 5)  // is the value for GHI good?
                             numModelsReporting++;
                 }

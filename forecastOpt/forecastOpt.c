@@ -100,8 +100,8 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
             case 'w': { fci->modelMixFileInput.fileName = strdup(optarg);
                         fci->runWeightedErrorAnalysis = True;
                         break; }
-            case 'p': { fci->genModelMixPermutations = False; } 
-            
+            case 'p': { fci->genModelMixPermutations = False; 
+                        break; } 
             default:  return False;         
         }       
     }  
@@ -155,7 +155,7 @@ void processForecast(forecastInputType *fci)
     fprintf(stderr, "%s\n", dtToStringDateTime(&fci->endDate));
     fprintf(stderr, "=== Weight sum range: %d to %d\n", fci->weightSumLowCutoff, fci->weightSumHighCutoff);
 
-    readForecastFile(fci);
+    readForecastFile(fci);  // this reads in all the forecast data (either single or composite) for all forecast horizons
     
     if(fci->runHoursAfterSunrise) 
         copyHoursAfterData(fci);
@@ -194,7 +194,9 @@ void runErrorAnalysis(forecastInputType *fci)
                 dumpNumModelsReportingTable(fci);
                 printRmseTableHour(fci, hoursAheadIndex, hoursAfterSunriseIndex);
                 printHourlySummary(fci, hoursAheadIndex, hoursAfterSunriseIndex);
+                
                 numHASwithData += runOptimizerNested(fci, hoursAheadIndex, hoursAfterSunriseIndex);
+                
                 fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
             }
             if(numHASwithData) {

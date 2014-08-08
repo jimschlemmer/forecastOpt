@@ -167,19 +167,12 @@ int readForecastFile(forecastInputType *fci)
 
         else
             thisSample->hoursAfterSunrise = -1;
-/*
-*/
-        
-        
-/*
-        if(fci->numValidSamples == 3)
-            return True;
-*/
 
         fci->numInputRecords++;
     }
     
     studyData(fci);
+    
     fci->gotForecast = True;
     
     return True;
@@ -472,6 +465,7 @@ int readDataFromLine(forecastInputType *fci, char *fields[])
     return True;
 }
 
+// review the input data for holes
 void studyData(forecastInputType *fci)
 {
     timeSeriesType *thisSample;
@@ -516,10 +510,13 @@ void studyData(forecastInputType *fci)
                 if(fci->columnInfo[columnIndex].percentMissing < 100 && fci->columnInfo[columnIndex].percentMissing > 0) {
                     fprintf(stderr, "Warning: %s is neither completely on nor off in the input forecast data (%.0f%% missing)\n", fci->columnInfo[columnIndex].columnName, fci->columnInfo[columnIndex].percentMissing);
                 }
+                // deactivate this model on account of too much missing data
                 if(fci->columnInfo[columnIndex].percentMissing > 90) {
                     fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive = False;
+                    fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].tooMuchDataMissing = True;
                     fprintf(fci->warningsFile.fp, "%35s : off\n", fci->columnInfo[columnIndex].columnName); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
-                    //fprintf(fci->warningsFile.fp, "Warning: disabling model %s : %.0f%% data missing : model index = %d hour index = %d\n", fci->columnInfo[columnIndex].columnName, fci->columnInfo[columnIndex].percentMissing, modelIndex, hoursAheadIndex); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
+                    fprintf(fci->warningsFile.fp, "WARNING: disabling model '%s' : %.0f%% data missing : model index = %d hour index = %d\n", fci->columnInfo[columnIndex].columnName, fci->columnInfo[columnIndex].percentMissing, modelIndex, hoursAheadIndex); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
+                    fprintf(stderr,               "WARNING: disabling model '%s' : %.0f%% data missing : model index = %d hour index = %d\n", fci->columnInfo[columnIndex].columnName, fci->columnInfo[columnIndex].percentMissing, modelIndex, hoursAheadIndex); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
                 }
                 else {
                     fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive = True;
@@ -527,9 +524,10 @@ void studyData(forecastInputType *fci)
                 }
             }
             
-            // use isUsable (in optimization stage) to signify isActive and not isReference forecast model (such as persistence)
-            fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isUsable = fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive 
-                                        && !fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isReference;
+            // use isContributingModel (in optimization stage) to signify isActive and not isReference forecast model (such as persistence)
+            fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isContributingModel = 
+                    fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive 
+                    && !fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isReference;
 
         //fprintf(stderr, "%s : column index = %d : model index = %d : hour index = %d : missing = %.0f%%\n", fci->columnInfo[columnIndex].columnName, columnIndex, fci->columnInfo[columnIndex].modelIndex, fci->columnInfo[columnIndex].hoursAheadIndex, fci->columnInfo[columnIndex].percentMissing);
         
@@ -777,7 +775,7 @@ ncep_NAM_hires_DSWRF_inst_30
                                     fci->descriptionFile.fileName, fci->descriptionFile.lineNumber, i+1, weight);
                             FatalError("scanHeaderLine()", ErrStr);                           
                         }
-                        // now we need to set the weight and isUsable flags for the current modelIndex and hoursAheadIndex
+                        // now we need to set the weight and isContributingModel flags for the current modelIndex and hoursAheadIndex
                         // but this is best done when we're finished reading in the forecast table
                         //fci->hoursAheadGroup[i].hourlyModelStats[modelIndex].optimizedWeightPhase2 = weight;
                         
@@ -911,10 +909,10 @@ void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDe
                     fci->hoursAheadGroup[hoursAheadIndex].hoursAhead = hoursAhead;
                 
                 // make hourErrorGroup links
- 
                 // turn off isActive if this HA is > than that specified in config file
                 fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].isActive = (maxHoursAhead <= 0 || hoursAhead <= maxHoursAhead);
                 fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].isReference = isReference;
+                fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].tooMuchDataMissing = False;
                 fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].columnInfoIndex = fci->numColumnInfoEntries;
                 fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].columnName = fci->columnInfo[fci->numColumnInfoEntries].columnName;
                 fci->maxModelIndex = MAX(fci->maxModelIndex, hoursAheadIndex);  // the max hoursAheadIndex is the number of hour groups
@@ -1048,7 +1046,7 @@ void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci)
                 for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
                     modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
                     err = &modelRun->hourlyModelStats[modelIndex];
-                    if(err->isUsable)
+                    if(err->isContributingModel)
                         fprintf(fp, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1 : err->optimizedWeightPhase2, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
                 }
             }
@@ -1095,7 +1093,7 @@ void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci)
             for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                 modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
                 err = &modelRun->hourlyModelStats[modelIndex];
-                if(err->isUsable)
+                if(err->isContributingModel)
                     fprintf(fp, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1 : err->optimizedWeightPhase2, modelIndex == fci->numModels-1 ? '\n' : ',');
                 else
                     fprintf(fp, "NA%c", modelIndex == fci->numModels-1 ? '\n' : ',');
@@ -1834,20 +1832,32 @@ add up to 1.
 // should be 2^numModels permutations minus the empty case.  So for five forecast
 // models we'd expect 31 permutations, including the 5 trivial cases.  
 
-void permuteRecursively(int pos, forecastInputType *fci)
+#define PERM_DEBUG
+
+void setOnOffSwitches(int position, int number, forecastInputType *fci)
 {
-    if(pos == (fci->numModels - 1)) {
-        fci->perm.switches[fci->perm.numPermutations][pos] = 0;
-        fci->perm.numPermutations++;
-        fci->perm.switches[fci->perm.numPermutations][pos] = 1;
+    int currentPow2 = pow(2, position);
+    
+    if(position < 0) {
+#ifdef PERM_DEBUG
+        int j;
+        for(j=0;j<fci->numModels;j++)
+            fprintf(stderr, "%d", (int) fci->perm.switches[fci->perm.numPermutations][j]);
+        fprintf(stderr, "\n");
+#endif
         fci->perm.numPermutations++;
         return;
     }
     
-    fci->perm.switches[fci->perm.numPermutations][pos] = 0;
-    permuteRecursively(pos+1, fci);
-    fci->perm.switches[fci->perm.numPermutations][pos] = 1;
-    permuteRecursively(pos+1, fci);
+    if(number >= currentPow2) {
+        fci->perm.switches[fci->perm.numPermutations][position] = 1;
+        number -= currentPow2;
+    }
+    
+    else
+        fci->perm.switches[fci->perm.numPermutations][position] = 0;
+    
+    setOnOffSwitches(position-1, number, fci);
 }
 
 void genPermutationMatrix(forecastInputType *fci)
@@ -1860,36 +1870,47 @@ void genPermutationMatrix(forecastInputType *fci)
     
     fci->perm.maxPermutations = pow(2, fci->numModels);
     fci->perm.numPermutations = 0;
+//    fci->perm.switches = (char **) calloc(fci->perm.maxPermutations, fci->numModels * sizeof(char *));
+
     fci->perm.switches = (char **) malloc(fci->perm.maxPermutations * sizeof(char *));
     for(i=0; i<fci->perm.maxPermutations; i++) {
         fci->perm.switches[i] = (char *) malloc(fci->numModels * sizeof(char *));
     }
     
-    permuteRecursively(0, fci);
+    for(i=0;i<fci->perm.maxPermutations;i++) {
+        setOnOffSwitches(fci->numModels, i, fci);
+    }
 }
 
-#define PERM_DEBUG
 void setPermutation(forecastInputType *fci, int permNumber)
 {
     int modelNum, hoursAheadIndex, hoursAfterSunriseIndex;
     
 #ifdef PERM_DEBUG
-    fprintf(stderr, "setPermutation: setting forecast models according to switches :");
+    fprintf(stderr, "setPermutation [%d]: setting forecast models according to switches :", permNumber);
     for(modelNum=0; modelNum<=fci->numModels; modelNum++) {
-        fprintf(stderr, "%c ", fci->perm.switches[permNumber][modelNum]);
+        fprintf(stderr, "%d", (int) fci->perm.switches[permNumber][modelNum]);
     }
     fprintf(stderr, "\n");
 #endif
     
     // set all model run instances to the appropriate 'isActive' state
-    for(modelNum=0; modelNum<=fci->numModels; modelNum++) {
-        int isActive = fci->perm.switches[permNumber][modelNum];
+    for(modelNum=0; modelNum<fci->numModels; modelNum++) {
+        int onOff = fci->perm.switches[permNumber][modelNum] && 
+                    !fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelNum].tooMuchDataMissing &&
+                    !fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelNum].isReference;
     
         for(hoursAheadIndex=0;hoursAheadIndex<fci->maxHoursAfterSunrise;hoursAheadIndex++) {
             for(hoursAfterSunriseIndex=0;hoursAfterSunriseIndex<fci->maxHoursAfterSunrise;hoursAfterSunriseIndex++) {
-                    fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hourlyModelStats[modelNum].isActive = isActive;
+                fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hourlyModelStats[modelNum].isActive = onOff;
+                fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hourlyModelStats[modelNum].isContributingModel = onOff;
+                    
             }
-            fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelNum].isActive = isActive;
+            fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelNum].isActive = onOff;
+            fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelNum].isContributingModel = onOff;
+#ifdef PERM_DEBUG
+            fprintf(stderr, "%s : %s\n", getGenericModelName(fci, modelNum), onOff ? "on" : "off");
+#endif
         }
     }
 

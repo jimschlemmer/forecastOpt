@@ -156,7 +156,7 @@ void version(void)
 // 
 // Notes: 
 //   this file should be parsed after the config and forecast T/S files.
-//   we have to turn on isActive/isUsable flags
+//   we have to turn on isActive/isContributingModel flags
 //   we need to check that all referenced models are legal model names
 
 int readModelMixFile(forecastInputType *fci)
@@ -284,7 +284,7 @@ int readModelMixFile(forecastInputType *fci)
             modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];              
             modelRun->hourlyModelStats[modelIndex].isReference = False;
             modelRun->hourlyModelStats[modelIndex].isActive = weight != -999;
-            modelRun->hourlyModelStats[modelIndex].isUsable = (weight != -999);  // !isReference && isActive
+            modelRun->hourlyModelStats[modelIndex].isContributingModel = (weight != -999);  // !isReference && isActive
             modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 = weight;  // set all the weights to this one weight
             modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 = weight;
             modelRun->hourlyModelStats[modelIndex].weight = weight;

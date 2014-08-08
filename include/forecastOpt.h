@@ -73,7 +73,7 @@ typedef struct {
     int optimizedWeightPhase1;  // the value associated with the minimized RMSE for all models in pass 1
     int optimizedWeightPhase2;  // the value associated with the minimized RMSE for all models in pass 2
     int N;
-    char isActive, isReference, isUsable, missingData;
+    char isActive, isReference, isContributingModel, tooMuchDataMissing;
     long long powerOfTen;
 } modelStatsType;
 
@@ -104,6 +104,7 @@ typedef struct {
     dateTimeType sunrise;
     int hoursAfterSunrise;
     char *siteName;  // useful for multiple site runs
+    int modelMixIndex;  // for this sample, use this model mix permutation
 } timeSeriesType;
 
 typedef struct {

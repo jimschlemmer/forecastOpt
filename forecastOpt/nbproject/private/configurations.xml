@@ -50,8 +50,15 @@ hlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/foreca
           <runcommandpicklistitem>/home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt -b 7 -v -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf>dev_test.1x.conf</runcommandpicklistitem>
           <runcommandpicklistitem>/home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt -b 7 -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf>dev_test.1x.conf</runcommandpicklistitem>
           <runcommandpicklistitem>/home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt -b 7 -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf/dev_test.1x.conf</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -b 7 -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf/dev_test.1x.conf
+# /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt </runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -b 7 -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf/dev_test.1x.conf 
+# /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -b 7 -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf/dev_test.1x.conf /var/www/html/kmh/data/adam/forecast.penn_state.csv
+# /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt</runcommandpicklistitem>
         </runcommandpicklist>
-        <runcommand>/home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt -b 7 -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf/dev_test.1x.conf</runcommand>
+        <runcommand>"${OUTPUT_PATH}" -b 7 -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf/dev_test.1x.conf /var/www/html/kmh/data/adam/forecast.penn_state.csv
+# /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt</runcommand>
         <rundir>.</rundir>
         <buildfirst>true</buildfirst>
         <terminal-type>0</terminal-type>
