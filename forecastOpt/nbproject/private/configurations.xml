@@ -42,10 +42,6 @@
       </nativedebugger>
       <runprofile version="9">
         <runcommandpicklist>
-          <runcommandpicklistitem>"${OUTPUT_PATH}"</runcommandpicklistitem>
-          <runcommandpicklistitem>"${OUTPUT_PATH}" -b 7 -v -k -a 2013062200,2014041823 -r 0-37 -c /home/jim/matrix/conf>dev_test.1x.conf</runcommandpicklistitem>
-          <runcommandpicklistitem>/home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-sc
-hlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt -b 7 -v -k -a 2013062200,2014041823 -r 0-37 -c /home/jim/matrix/conf>dev_test.1x.conf</runcommandpicklistitem>
           <runcommandpicklistitem>/home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt -b 7 -v -k -a 2013062200,2014041823 -r 0-37 -c /home/jim/matrix/conf>dev_test.1x.conf</runcommandpicklistitem>
           <runcommandpicklistitem>/home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt -b 7 -v -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf>dev_test.1x.conf</runcommandpicklistitem>
           <runcommandpicklistitem>/home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt -b 7 -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf>dev_test.1x.conf</runcommandpicklistitem>
@@ -56,9 +52,12 @@ hlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/foreca
 # /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt</runcommandpicklistitem>
           <runcommandpicklistitem>"${OUTPUT_PATH}" -b 7 -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf/dev_test.1x.conf /var/www/html/kmh/data/adam/forecast.penn_state.csv
 # /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -b 7 -s 16 -a 2013112000,2014041823 -c /home/jim/matrix/conf/conf_HRRR/dev_test.1x.conf -o /home/jim/matrix/run_HRRR/output.row=1.x=1.HAS /home/jim/matrix/forecastTablesHRRR_GHI/forecast.hanford.csv
+# /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -b 7 -s 16 -a 2013112000,2014041823 -c /home/jim/matrix/conf/conf_HRRR/dev_test.1x.conf -o /home/jim/matrix/run_HRRR/output.row=1.x=1.HAS /home/jim/matrix/forecastTablesHRRR_GHI/forecast.hanford.csv # /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -t -b 7 -s 16 -a 2013112000,2014041823 -c /home/jim/matrix/conf/conf_HRRR/dev_test.1x.conf -o /home/jim/matrix/run_HRRR/output.row=1.x=1.HAS /home/jim/matrix/forecastTablesHRRR_GHI/forecast.desert_rock.csv # /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt</runcommandpicklistitem>
         </runcommandpicklist>
-        <runcommand>"${OUTPUT_PATH}" -b 7 -k -a 2013062200,2014041823 -r 0,37 -c /home/jim/matrix/conf/dev_test.1x.conf /var/www/html/kmh/data/adam/forecast.penn_state.csv
-# /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt</runcommand>
+        <runcommand>"${OUTPUT_PATH}" -t -b 7 -s 16 -a 2013112000,2014041823 -c /home/jim/matrix/conf/conf_HRRR/dev_test.1x.conf -o /home/jim/matrix/run_HRRR/output.row=1.x=1.HAS /home/jim/matrix/forecastTablesHRRR_GHI/forecast.desert_rock.csv # /home/jim/.netbeans/remote/sunspot.asrc.cestm.albany.edu/jim-schlemmers-macbook-pro.local-MacOSX-x86_64/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt</runcommand>
         <rundir>.</rundir>
         <buildfirst>true</buildfirst>
         <terminal-type>0</terminal-type>

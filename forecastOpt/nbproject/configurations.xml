@@ -88,6 +88,16 @@
         <cTool>
         </cTool>
       </item>
+      <folder path="0">
+        <cTool>
+          <preprocessorList>
+            <Elem>_OPTIMIZE__=1</Elem>
+          </preprocessorList>
+          <undefinedList>
+            <Elem>__NO_INLINE__</Elem>
+          </undefinedList>
+        </cTool>
+      </folder>
       <item path="forecastOpt.c" ex="false" tool="0" flavor2="2">
         <cTool>
         </cTool>

@@ -1,0 +1,8 @@
+ToDo
+
+Need to look at how model name "stubs" in conf file are parsed.  Right now if you have
+two model names where one is a substring of the other, you can run into an error:
+
+"ncep_HRRR_NEW_SHIFTED_", "HRRR shifted via previous GHI", 0
+"ncep_HRRR_NEW_SHIFTED_CLR_", "HRRR clearsky shifted", 0
+~

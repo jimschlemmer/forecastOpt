@@ -127,7 +127,6 @@ void help(void)
     printf( "where: -d = comma separated input [TAB]\n");
     printf( "       -s maxHours = set max hours after sunrise\n");
     printf( "       -m = input data file contains multiple sites (concatenated)\n");
-    printf( "       -p = don't generate all model mix permutations -- just what's in conf file\n");
     printf( "       -k = skip phase 2 optimization\n");
     printf( "       -r beginHourIndex,endHourIndex = specify which hour ahead indexes to start and end with\n");
     printf( "       -a begin,end = specify begin and end dates in YYYYMMDD,YYYYMMDD format\n");
@@ -163,17 +162,7 @@ void processForecast(forecastInputType *fci)
     fprintf(stderr, "=== Number of    input records: %d\n", fci->numInputRecords);
     fprintf(stderr, "=== Number of daylight records: %d\n", fci->numDaylightRecords);
                
-    if(fci->genModelMixPermutations) {
-        int i;
-        genPermutationMatrix(fci);
-        for(i=0; i<=fci->perm.numPermutations; i++) {
-            setPermutation(fci, i);  // set the models on/off switches according to perm
-            runErrorAnalysis(fci);
-        }
-    }
-    else {
-        runErrorAnalysis(fci);
-    }
+    runErrorAnalysis(fci);
      
     fprintf(stderr, "=== Ending at %s\n", timeOfDayStr());
     fprintf(stderr, "=== Elapsed time: %s\n", getElapsedTime(start));

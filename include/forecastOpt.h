@@ -104,7 +104,6 @@ typedef struct {
     dateTimeType sunrise;
     int hoursAfterSunrise;
     char *siteName;  // useful for multiple site runs
-    int modelMixIndex;  // for this sample, use this model mix permutation
 } timeSeriesType;
 
 typedef struct {
@@ -134,12 +133,6 @@ typedef struct {
 } fileType;
 
 typedef struct {
-    int numPermutations;
-    int maxPermutations;
-    char **switches;
-} permutationType;
-
-typedef struct {
     fileType forecastTableFile;
     fileType warningsFile;
     fileType descriptionFile;
@@ -157,6 +150,7 @@ typedef struct {
     int hoursAheadMap[MAX_HOURS_AHEAD];
     int numColumnInfoEntries;
     int numModels;
+    int numHeaderFields;
     int numDivisions;
     int increment1, increment2, refinementBase;
     int weightSumLowCutoff, weightSumHighCutoff;
@@ -170,6 +164,7 @@ typedef struct {
     double lat, lon;
     int zenithCol, groundGHICol, groundDNICol, groundDiffuseCol, groundTempCol, groundWindCol, satGHICol, clearskyGHICol, startModelsColumnNumber;
     dateTimeType startDate, endDate;
+    char *startDateStr, *endDateStr;
     char verbose;
     char filterWithSatModel;
     char multipleSites;
@@ -187,9 +182,7 @@ typedef struct {
     char runHoursAfterSunrise;
     int maxHoursAfterSunrise;
     char gotConfig, gotForecast;
-    char timeSpanStr[256];
     char genModelMixPermutations;
-    permutationType perm;
 } forecastInputType;
 
 int computeModelRMSE(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);

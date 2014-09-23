@@ -94,7 +94,7 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
         
         // deal with the sat model  
         if(thisSample->satGHI < 5) {
-            if(thisSample->sunIsUp) 
+            if(thisSample->sunIsUp && thisSample->zenith < 85) 
                 fprintf(fci->warningsFile.fp, "%s : bad sample: sat model, hoursAhead=%d hoursAfterSunrise=%d: GHI = %.1f, zenith = %.1f\n", 
                     dtToStringCsv2(&thisSample->dateTime), hoursAhead, hoursAfterSunrise, thisSample->satGHI, thisSample->zenith);
             if(fci->filterWithSatModel)
@@ -109,7 +109,7 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
                 thisGHI = thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex];
                 if(thisGHI < 5) {
 //#ifdef DEBUG1
-                    if(thisSample->sunIsUp) 
+                    if(thisSample->sunIsUp && thisSample->zenith < 85) 
                         fprintf(fci->warningsFile.fp, "%s : bad sample: model %s, modelIndex=%d, hoursAhead=%d hoursAfterSunrise=%d: GHI = %.1f, zenith = %.1f\n", 
                             dtToStringCsv2(&thisSample->dateTime), getGenericModelName(fci, modelIndex), modelIndex, hoursAhead, hoursAfterSunrise, thisGHI, thisSample->zenith);
 //#endif                
@@ -127,8 +127,9 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
         }
         
         if(thisSample->groundGHI < MIN_GHI_VAL ) {
-            fprintf(fci->warningsFile.fp, "%s : bad sample: ground data, hoursAhead=%d hoursAfterSunrise=%d: GHI = %.1f, zenith = %.1f\n", 
-                dtToStringCsv2(&thisSample->dateTime), hoursAhead, hoursAfterSunrise, thisGHI, thisSample->zenith);
+            if(thisSample->sunIsUp && thisSample->zenith < 85)
+                fprintf(fci->warningsFile.fp, "%s : bad sample: ground data, hoursAhead=%d hoursAfterSunrise=%d: GHI = %.1f, zenith = %.1f\n", 
+                        dtToStringCsv2(&thisSample->dateTime), hoursAhead, hoursAfterSunrise, thisGHI, thisSample->zenith);
             thisSample->isValid = False;
         }
         else {
@@ -480,8 +481,9 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
         FatalError("dumpHourlyOptimizedTS()", ErrStr);
     }
     // print the header
-    fprintf(fci->optimizedTSFile.fp, "#site=%s lat=%.3f lon=%.3f hoursAhead=%d HAS=%s", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, hoursAhead, fci->runHoursAfterSunrise ? "yes" : "no");
-    fprintf(fci->optimizedTSFile.fp, "\n#year,month,day,hour,%s", fci->runHoursAfterSunrise ? "min,HAS,groupIsValid" : "min,groupIsValid"); //groundGHI,satGHI");
+    fprintf(fci->optimizedTSFile.fp, "#site=%s lat=%.3f lon=%.3f hoursAhead=%d HAS=%s date span=%s-%s\n", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, hoursAhead, fci->runHoursAfterSunrise ? "yes" : "no",
+            fci->startDateStr, fci->endDateStr);
+    fprintf(fci->optimizedTSFile.fp, "#year,month,day,hour,%s", fci->runHoursAfterSunrise ? "min,HAS,groupIsValid" : "min,groupIsValid"); //groundGHI,satGHI");
     
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][0] : &fci->hoursAheadGroup[hoursAheadIndex];
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
@@ -489,7 +491,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
             fprintf(fci->optimizedTSFile.fp, ",%s", getGenericModelName(fci, modelIndex));
         }
     }
-    fprintf(fci->optimizedTSFile.fp, ",groundGHI,satGHI,optimizedGHI,correctedGHI,clearskyGHI\n");
+    fprintf(fci->optimizedTSFile.fp, ",groundGHI,satGHI,optimizedGHI,clearskyGHI\n");
 
     weightedModelErr = &modelRun->weightedModelStats;
     weightedModelErr->sumModel_Ground_2 = 0;
@@ -528,7 +530,8 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
         }
     }
     
-    correctOptimizedGHI(fci, hoursAheadIndex);
+    if(0)
+        correctOptimizedGHI(fci, hoursAheadIndex);
     
     // now print it all out to the TS output file
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
@@ -555,9 +558,9 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
                     fprintf(fci->optimizedTSFile.fp, ",%.0f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);                    
                 }
             }
-            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f,%.0f,%.0f\n", thisSample->groundGHI, thisSample->satGHI, 
+            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f,%.0f\n", thisSample->groundGHI, thisSample->satGHI, 
                     thisSample->isValid ? thisSample->optimizedGHI : -999, 
-                    thisSample->isValid ? thisSample->correctedOptimizedGHI : -999, 
+                    //thisSample->isValid ? thisSample->correctedOptimizedGHI : -999, 
                     thisSample->clearskyGHI);            
         }
     }
@@ -741,7 +744,7 @@ int dumpHourlyOptimizedTS_HAS_depricated(forecastInputType *fci, int hoursAheadI
         FatalError("dumpHourlyOptimizedTS_HAS()", ErrStr);
     }
     // print the header
-    fprintf(fci->optimizedTSFile.fp, "#site=%s lat=%.3f lon=%.3f hoursAhead=%d", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, hoursAhead);
+    fprintf(fci->optimizedTSFile.fp, "#site=%s lat=%.3f lon=%.3f hoursAhead=%d date span=%s-%s", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, hoursAhead, fci->startDateStr, fci->endDateStr);
     if(fci->runHoursAfterSunrise) 
         fprintf(fci->optimizedTSFile.fp, " hoursAfterSunrise=%d", hoursAfterSunrise);    
     fprintf(fci->optimizedTSFile.fp, "\n#year,month,day,hour,min"); //groundGHI,satGHI");
