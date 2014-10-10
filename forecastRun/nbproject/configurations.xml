@@ -22,6 +22,7 @@
                    root="../include">
       <itemPath>../include/carp.h</itemPath>
       <itemPath>../include/forecastOpt.h</itemPath>
+      <itemPath>../include/forecastOptUtils.h</itemPath>
       <itemPath>../include/gridDateTime.h</itemPath>
       <itemPath>../include/gridded.h</itemPath>
       <itemPath>../include/ioUtils.h</itemPath>
@@ -61,16 +62,18 @@
             <incDir>
               <pElem>../include</pElem>
             </incDir>
-            <preprocessorList>
-              <Elem>_OPTIMIZE__=1</Elem>
-            </preprocessorList>
-            <undefinedList>
-              <Elem>__NO_INLINE__</Elem>
-            </undefinedList>
           </cTool>
         </makeTool>
       </makefileType>
-      <item path="../forecastLib/errorAnalysis.c" ex="false" tool="0" flavor2="0">
+      <item path="../forecastLib/errorAnalysis.c" ex="false" tool="0" flavor2="2">
+        <cTool>
+          <preprocessorList>
+            <Elem>_OPTIMIZE__=1</Elem>
+          </preprocessorList>
+          <undefinedList>
+            <Elem>__NO_INLINE__</Elem>
+          </undefinedList>
+        </cTool>
       </item>
       <item path="../forecastLib/forecastOptUtils.c" ex="false" tool="0" flavor2="2">
         <cTool>
@@ -78,20 +81,56 @@
       </item>
       <item path="../forecastLib/gridDateTime.c" ex="false" tool="0" flavor2="2">
         <cTool>
+          <preprocessorList>
+            <Elem>_OPTIMIZE__=1</Elem>
+          </preprocessorList>
+          <undefinedList>
+            <Elem>__NO_INLINE__</Elem>
+          </undefinedList>
         </cTool>
       </item>
       <item path="../forecastLib/ioUtils.c" ex="false" tool="0" flavor2="2">
         <cTool>
+          <preprocessorList>
+            <Elem>_OPTIMIZE__=1</Elem>
+          </preprocessorList>
+          <undefinedList>
+            <Elem>__NO_INLINE__</Elem>
+          </undefinedList>
         </cTool>
       </item>
       <item path="../forecastLib/sunae.c" ex="false" tool="0" flavor2="2">
         <cTool>
+          <preprocessorList>
+            <Elem>_OPTIMIZE__=1</Elem>
+          </preprocessorList>
+          <undefinedList>
+            <Elem>__NO_INLINE__</Elem>
+          </undefinedList>
         </cTool>
       </item>
       <item path="../forecastLib/timeUtils.c" ex="false" tool="0" flavor2="2">
         <cTool>
+          <preprocessorList>
+            <Elem>_OPTIMIZE__=1</Elem>
+          </preprocessorList>
+          <undefinedList>
+            <Elem>__NO_INLINE__</Elem>
+          </undefinedList>
         </cTool>
       </item>
+      <item path="../include/forecastOptUtils.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <folder path="0">
+        <cTool>
+          <preprocessorList>
+            <Elem>_OPTIMIZE__=1</Elem>
+          </preprocessorList>
+          <undefinedList>
+            <Elem>__NO_INLINE__</Elem>
+          </undefinedList>
+        </cTool>
+      </folder>
       <item path="forecastRun.c" ex="false" tool="0" flavor2="0">
       </item>
     </conf>

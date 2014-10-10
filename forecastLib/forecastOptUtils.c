@@ -174,7 +174,7 @@ int readForecastFile(forecastInputType *fci)
     
     studyData(fci);
     
-    fci->gotForecast = True;
+    fci->gotForecastFile = True;
     
     return True;
 }
@@ -604,8 +604,8 @@ void initForecastInfo(forecastInputType *fci)
     fci->outputDirectory = "./";
     fci->verbose = False;
     fci->multipleSites = False;
-    fci->gotConfig = False;
-    fci->gotForecast = False;
+    fci->gotConfigFile = False;
+    fci->gotForecastFile = False;
     fci->weightSumLowCutoff = 95;
     fci->weightSumHighCutoff = 105;
     fci->startHourLowIndex = -1;
@@ -794,7 +794,7 @@ ncep_NAM_hires_DSWRF_inst_30
     }
 
     fclose(fci->descriptionFile.fp);
-    fci->gotConfig = True;
+    fci->gotConfigFile = True;
 }
 
 char *stripQuotes(char *str)

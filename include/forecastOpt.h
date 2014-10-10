@@ -181,7 +181,7 @@ typedef struct {
     char runOptimizer, skipPhase2;
     char runHoursAfterSunrise;
     int maxHoursAfterSunrise;
-    char gotConfig, gotForecast;
+    char gotConfigFile, gotForecastFile;
     char genModelMixPermutations;
 } forecastInputType;
 

@@ -167,14 +167,14 @@ int readModelMixFile(forecastInputType *fci)
     char *mixModelNames[MAX_MODELS];
     int numMixModelNames=0;
  
-    if(!fci->gotConfig) 
-        FatalError("readModelMixFile()", "Config (model description) file not read in yet.");
-    if(!fci->gotForecast) 
-        FatalError("readModelMixFile()", "Forecast file not read in yet.");
+    if(!fci->gotConfigFile) 
+        FatalError("readModelMixFile()", "Configuration (model description) file not read in.");
+    if(!fci->gotForecastFile) 
+        FatalError("readModelMixFile()", "Forecast file not read in.");
     
     if((fci->modelMixFileInput.fp = fopen(fci->modelMixFileInput.fileName, "r")) == NULL) {
         fprintf(stderr, "Couldn't open model mix file %s\n", fci->modelMixFileInput.fileName);
-        return FALSE;
+        return False;
     }
     
 /*  

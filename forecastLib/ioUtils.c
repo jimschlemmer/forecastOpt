@@ -58,10 +58,10 @@ int fileExists(char *path)
 int directoryExists(char *path) 
 {
      DIR *dirPtr;
-     int result = TRUE;
+     int result = True;
 
      if((dirPtr = opendir(path)) == NULL) 
-        result = FALSE;
+        result = False;
      else 
         closedir(dirPtr);
 

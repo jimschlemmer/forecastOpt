@@ -6,9 +6,9 @@
 #include <stdio.h>
 #include "carp.h"
 
-#ifndef TRUE
-#define TRUE        1
-#define FALSE        0
+#ifndef True
+#define True        1
+#define False        0
 #define        True        1
 #define False        0
 #endif
