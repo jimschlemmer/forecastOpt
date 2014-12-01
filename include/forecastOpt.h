@@ -26,6 +26,7 @@
 extern int errno;
 
 #include "gridDateTime.h"
+#include "gridded.h"
 #include "ioUtils.h"
 #include "timeUtils.h"
 

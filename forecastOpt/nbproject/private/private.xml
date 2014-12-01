@@ -10,10 +10,7 @@
     <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="0"/>
     <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
         <group>
-            <file>file:/Users/jimschlemmer/satmod/source/forecastOpt/forecastLib/gridDateTime.c</file>
-            <file>file:/Users/jimschlemmer/satmod/source/forecastOpt/forecastLib/sunae.c</file>
-            <file>file:/Users/jimschlemmer/satmod/source/forecastOpt/forecastLib/timeUtils.c</file>
-            <file>file:/Users/jimschlemmer/satmod/source/forecastOpt/forecastLib/errorAnalysis.c</file>
+            <file>file:/Users/jimschlemmer/satmod/source/forecastOpt/forecastOpt/forecastOpt.c</file>
         </group>
     </open-files>
 </project-private>

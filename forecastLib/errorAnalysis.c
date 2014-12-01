@@ -491,7 +491,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
             fprintf(fci->optimizedTSFile.fp, ",%s", getGenericModelName(fci, modelIndex));
         }
     }
-    fprintf(fci->optimizedTSFile.fp, ",groundGHI,satGHI,optimizedGHI,clearskyGHI\n");
+    fprintf(fci->optimizedTSFile.fp, ",groundGHI,groundDNI,satGHI,optimizedGHI,clearskyGHI\n");
 
     weightedModelErr = &modelRun->weightedModelStats;
     weightedModelErr->sumModel_Ground_2 = 0;
@@ -558,7 +558,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
                     fprintf(fci->optimizedTSFile.fp, ",%.0f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);                    
                 }
             }
-            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f,%.0f\n", thisSample->groundGHI, thisSample->satGHI, 
+            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f,%.0f,%.0f\n", thisSample->groundGHI, thisSample->groundDNI, thisSample->satGHI, 
                     thisSample->isValid ? thisSample->optimizedGHI : -999, 
                     //thisSample->isValid ? thisSample->correctedOptimizedGHI : -999, 
                     thisSample->clearskyGHI);            

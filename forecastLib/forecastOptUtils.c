@@ -351,7 +351,8 @@ int readDataFromLine(forecastInputType *fci, char *fields[], int numFields)
     
     if(thisSample->groundGHI < MIN_IRR || thisSample->groundGHI > MAX_IRR) {
         sprintf(ErrStr, "Got bad surface GHI at line %d: %.2f", fci->forecastLineNumber, thisSample->groundGHI);
-        FatalError("readDataFromLine()", ErrStr);
+        thisSample->groundGHI  = 0;
+        //FatalError("readDataFromLine()", ErrStr);
     }
     //checkTooLow(groundGHI, "groundGHI");
     if(thisSample->sunIsUp && thisSample->groundGHI < 1)  
@@ -364,13 +365,15 @@ int readDataFromLine(forecastInputType *fci, char *fields[], int numFields)
     thisSample->groundDNI = atof(fields[fci->columnInfo[fci->groundDNICol].inputColumnNumber]);
     if(thisSample->groundDNI < MIN_IRR || thisSample->groundDNI > MAX_IRR) {
         sprintf(ErrStr, "Got bad surface DNI at line %d: %.2f", fci->forecastLineNumber, thisSample->groundDNI);
-        FatalError("readDataFromLine()", ErrStr);
+        thisSample->groundDNI = 0;
+        //FatalError("readDataFromLine()", ErrStr);
     }
     
     thisSample->groundDiffuse = atof(fields[fci->columnInfo[fci->groundDiffuseCol].inputColumnNumber]);
     if(thisSample->groundDiffuse < MIN_IRR || thisSample->groundDiffuse > MAX_IRR) {
         sprintf(ErrStr, "Got bad surface diffuse at line %d: %.2f", fci->forecastLineNumber, thisSample->groundDiffuse);
-        FatalError("readDataFromLine()", ErrStr);
+        thisSample->groundDiffuse = 0;
+        //FatalError("readDataFromLine()", ErrStr);
     }  
     
     thisSample->clearskyGHI = atof(fields[fci->columnInfo[fci->clearskyGHICol].inputColumnNumber]);
