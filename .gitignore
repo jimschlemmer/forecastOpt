@@ -1,3 +1,13 @@
-nbproject/*
+-# Compiled source #
+-###################
+-*.com
+-*.class
+*.dll
+*.exe
 *.o
-satLib/*.o
+*.so
+*.a
+forecastRun/nbproject
+forecastRun/forecastRun
+forecastOpt/nbproject
+forecastOpt/forecastOpt

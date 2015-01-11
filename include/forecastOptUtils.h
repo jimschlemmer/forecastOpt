@@ -58,3 +58,7 @@ void copyHoursAfterData(forecastInputType *fci);
 void dumpHoursAfterSunrise(forecastInputType *fci);
 void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci);
 void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci);
+int getHoursAheadIndex(forecastInputType *fci, int hoursAhead);
+int getHoursAfterSunriseIndex(forecastInputType *fci, int hoursAfterSunrise);
+int getModelIndex(forecastInputType *fci, char *modelName);
+

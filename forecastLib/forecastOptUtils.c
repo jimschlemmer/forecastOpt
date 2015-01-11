@@ -192,9 +192,9 @@ void setSiteInfo(forecastInputType *fci, char *line)
     
     // Now that we know the site name we can open the warnings file
     if(fci->multipleSites)
-        sprintf(tempFileName, "%s/MultiSite-site%d-%s.warnings.txt", fci->outputDirectory, fci->numSites+1, fci->siteName);
+        sprintf(tempFileName, "%s/MultiSite-site%d-%s.warnings.perm%02d.txt", fci->outputDirectory, fci->numSites+1, fci->siteName, fci->modelPermutations.currentPermutationIndex);
     else
-        sprintf(tempFileName, "%s/%s.warnings.txt", fci->outputDirectory, fci->siteName);
+        sprintf(tempFileName, "%s/%s.warnings.perm%02d.txt", fci->outputDirectory, fci->siteName, fci->modelPermutations.currentPermutationIndex);
     
     if(fci->warningsFile.fp != NULL)
         fclose(fci->warningsFile.fp);
@@ -532,20 +532,21 @@ void studyData(forecastInputType *fci)
             }
             
             // use isContributingModel (in optimization stage) to signify isActive and not isReference forecast model (such as persistence)
+/*
             fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isContributingModel = 
                     fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive 
                     && !fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isReference;
+*/
 
         //fprintf(stderr, "%s : column index = %d : model index = %d : hour index = %d : missing = %.0f%%\n", fci->columnInfo[columnIndex].columnName, columnIndex, fci->columnInfo[columnIndex].modelIndex, fci->columnInfo[columnIndex].hoursAheadIndex, fci->columnInfo[columnIndex].percentMissing);
         
         // disable models if percentMissing < threshold
     }
     fprintf(fci->warningsFile.fp, "===========================================================\n");   
-  
 }
 /*
  
- Columns of interest
+ Potential columns of interest
  
 siteGroup
 siteName
@@ -596,6 +597,7 @@ ecmwf_cloud_1                           ECMWF total cloud
 ecmwf_ghi_1                             ECMWF average GHI		
 */
 
+
 void initForecastInfo(forecastInputType *fci)
 {
     int i;
@@ -626,6 +628,7 @@ void initForecastInfo(forecastInputType *fci)
     fci->siteName = NULL;
     fci->skipPhase2 = False;
     fci->numModels = 0;
+    fci->numContribModels = 0;
     fci->numSites = 0;
     fci->maxModelIndex = 0;
     fci->numTotalSamples = 0;
@@ -637,7 +640,7 @@ void initForecastInfo(forecastInputType *fci)
     fci->numColumnInfoEntries = 0;
     fci->numInputRecords = 0;
     fci->numDaylightRecords = 0;
-    fci->genModelMixPermutations = True;
+    fci->doModelPermutations = True;
     fci->modelMixDirectory = "modelMixes";
 
     for(i=0; i<MAX_HOURS_AHEAD; i++) {
@@ -646,16 +649,17 @@ void initForecastInfo(forecastInputType *fci)
     
     fci->descriptionFile.fileName = NULL;
     fci->warningsFile.fileName = NULL;
-    fci->weightsFile.fileName = NULL;
+    fci->weightTableFile.fileName = NULL;
     fci->modelMixFileOutput.fileName = NULL;
     fci->modelMixFileInput.fileName = NULL;
     fci->warningsFile.fp = NULL;
     fci->descriptionFile.fp = NULL;
-    fci->weightsFile.fp = NULL;
+    fci->weightTableFile.fp = NULL;
     fci->modelMixFileOutput.fp = NULL;
     fci->modelMixFileInput.fp = NULL;
     fci->correctionStatsFile.fp = NULL;
     
+    fci->modelPermutations.numPermutations = 0;
 }
 
 void incrementTimeSeries(forecastInputType *fci)
@@ -767,7 +771,10 @@ ncep_NAM_hires_DSWRF_inst_30
                 maxHoursAhead = atoi(fields[3]);
             
             registerColumnInfo(fci, modelName, modelDesc, isReference, IsForecast, maxHoursAhead);    // register this model as one we want to use
-
+            fci->numModels++;
+            if(!isReference)
+                fci->numContribModels++;
+            
             if(numFields > 1000) {
                     for(i=modelStartColumn; i<numFields; i++) {
                         thisHour = hoursAheadColMap[i];
@@ -946,7 +953,6 @@ void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDe
             sprintf(ErrStr, "model name %s not found in header line", columnName);
             FatalError("registerColumnInfo()", ErrStr);
         }
-        fci->numModels++;
     }
 
     // not a forecast but we still need to set a few things
@@ -1033,7 +1039,9 @@ void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci)
     
     FILE *fp;
     char fileName[1024];
-    int modelIndex, hoursAheadIndex, hoursAfterSunriseIndex;
+    char outBuff[1024 * 1024];
+    char *buffPtr;
+    int modelIndex, hoursAheadIndex, hoursAfterSunriseIndex, emptyOutput;
     //int hoursAhead, hoursAfterSunrise;
     modelRunType *modelRun;
     modelStatsType *err;
@@ -1042,31 +1050,47 @@ void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci)
         fprintf(stderr, "\nGenerating model mix percentage files by model...\n");
     
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        sprintf(fileName, "%s/%s.ModelMixBy.HA_HAS.%s.csv", fci->outputDirectory, genProxySiteName(fci), getGenericModelName(fci, modelIndex));
-        if((fp = fopen(fileName, "w")) == NULL) {
-            sprintf(ErrStr, "Couldn't open file %s : %s", fileName, strerror(errno));
-            FatalError("dumpModelMix_EachModel_HAxHAS()", ErrStr);
-        }
+        buffPtr = outBuff;  // reset memory buffer
+        emptyOutput = True;
 
         // print header
-        fprintf(fp, "#For model %s: model percent by hours ahead (HA) and hours after sunrise (HAS)\n#siteName=%s,lat=%.2f,lon=%.3f,date span=%s-%s\n#HA,",
+        buffPtr += sprintf(buffPtr, "#For model %s: model percent by hours ahead (HA) and hours after sunrise (HAS)\n#siteName=%s,lat=%.2f,lon=%.3f,date span=%s-%s\n#HA,",
                 getGenericModelName(fci, modelIndex), genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, fci->startDateStr, fci->endDateStr);
         for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) 
-            fprintf(fp, "HAS=%d%c", hoursAfterSunriseIndex+1, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
+            buffPtr += sprintf(buffPtr, "HAS=%d%c", hoursAfterSunriseIndex+1, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
         
         for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {            
-            if(fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive) {
-                fprintf(fp, "%d,", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
+            if(fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isOn) {
+                buffPtr += sprintf(buffPtr, "%d,", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
                 for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
                     modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
                     err = &modelRun->hourlyModelStats[modelIndex];
-                    if(err->isContributingModel)
-                        fprintf(fp, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1 : err->optimizedWeightPhase2, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
+                    if(isContributingModel(err)) {
+                        buffPtr += sprintf(buffPtr, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1 : err->optimizedWeightPhase2, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
+                        emptyOutput = False;
+                    }
                 }
             }
         }
-        fclose(fp);
+        if(!emptyOutput) {
+            sprintf(fileName, "%s/%s.ModelMixBy.HA_HAS.%s.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), getGenericModelName(fci, modelIndex), fci->modelPermutations.currentPermutationIndex);
+            if((fp = fopen(fileName, "w")) == NULL) {
+                sprintf(ErrStr, "Couldn't open file %s : %s", fileName, strerror(errno));
+                FatalError("dumpModelMix_EachModel_HAxHAS()", ErrStr);
+            }
+            fprintf(fp, outBuff);
+            fclose(fp);
+        }
     }
+}
+
+int isContributingModel(modelStatsType *model)
+{
+    // the current model is active if:
+    // 1) isOn is set
+    // 2) it's not a reference model (such as persistence)
+    // 3) it hasn't been shut off because of too much missing data
+    return(model->isOn && !model->isReference);
 }
 
 void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci)
@@ -1090,7 +1114,7 @@ void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci)
         fprintf(stderr, "\nGenerating model mix percentage files by hours after sunrise...\n");
     
     for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
-        sprintf(fileName, "%s/%s.percentByHAS.HA_Model.HAS=%d.csv", fci->outputDirectory, genProxySiteName(fci), hoursAfterSunriseIndex+1);
+        sprintf(fileName, "%s/%s.percentByHAS.HA_Model.HAS=%d.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), hoursAfterSunriseIndex+1, fci->modelPermutations.currentPermutationIndex);
         if((fp = fopen(fileName, "w")) == NULL) {
             sprintf(ErrStr, "Couldn't open file %s : %s", fileName, strerror(errno));
             FatalError("dumpModelMix_EachModel_HAxHAS()", ErrStr);
@@ -1107,7 +1131,7 @@ void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci)
             for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                 modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
                 err = &modelRun->hourlyModelStats[modelIndex];
-                if(err->isContributingModel)
+                if(isContributingModel(err))
                     fprintf(fp, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1 : err->optimizedWeightPhase2, modelIndex == fci->numModels-1 ? '\n' : ',');
                 else
                     fprintf(fp, "NA%c", modelIndex == fci->numModels-1 ? '\n' : ',');
@@ -1128,7 +1152,7 @@ void printByHour(forecastInputType *fci)
     for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
         modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
 
-        sprintf(fileName, "%s/%s.forecast.error.hoursAhead=%02d.csv", fci->outputDirectory, genProxySiteName(fci), modelRun->hoursAhead);
+        sprintf(fileName, "%s/%s.forecast.error.hoursAhead=%02d.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), modelRun->hoursAhead, fci->modelPermutations.currentPermutationIndex);
         //fprintf(stderr, "hour[%d] hour=%d file=%s\n", hoursAheadIndex, modelRun->hoursAhead, fileName);
         fp = fopen(fileName, "w");
 
@@ -1154,7 +1178,7 @@ void printByModel(forecastInputType *fci)
     modelStatsType *err;
     
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {   
-        sprintf(fileName, "%s/%s.forecast.error.model=%s.csv", fci->outputDirectory, genProxySiteName(fci), getGenericModelName(fci, modelIndex));
+        sprintf(fileName, "%s/%s.forecast.error.model=%s.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), getGenericModelName(fci, modelIndex), fci->modelPermutations.currentPermutationIndex);
         fp = fopen(fileName, "w");
 
 
@@ -1275,7 +1299,7 @@ FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int ho
         sprintf(satGHIerr, "sat GHI MBE=%.1f%%", modelRun->satModelStats.mbePct * 100);
 
     
-    sprintf(fileName, "%s/%s.forecast.analysisType=%s.csv", fci->outputDirectory, genProxySiteName(fci), analysisType);
+    sprintf(fileName, "%s/%s.forecast.analysisType=%s.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), analysisType, fci->modelPermutations.currentPermutationIndex);
     //fp = fopen(fileName, "w");
     fp = stderr;
     
@@ -1312,7 +1336,7 @@ FILE *openErrorTypeFile(forecastInputType *fci, char *fileNameStr)
         sprintf(satGHIerr, "sat GHI MBE=%.1f%%", fci->hoursAheadGroup[0].satModelStats.mbePct * 100);
 
     
-    sprintf(fileName, "%s/%s.%s.csv", fci->outputDirectory, genProxySiteName(fci), fileNameStr);
+    sprintf(fileName, "%s/%s.%s.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), fileNameStr, fci->modelPermutations.currentPermutationIndex);
     fp = fopen(fileName, "w");
     
     fprintf(fp, "#siteName=%s,lat=%.2f,lon=%.2f,%s,%s,date span=%s-%s\n", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, fileNameStr, satGHIerr, fci->startDateStr, fci->endDateStr);
@@ -1336,6 +1360,10 @@ char *getGenericModelName(forecastInputType *fci, int modelIndex)
     
     if(modelIndex < 0)
         return("satellite");
+    if(modelIndex >= fci->numModels) {
+        fprintf(stderr, "getGenericModelName(): Internal Error: got modelIndex = %d when numModels = %d", modelIndex, fci->numModels);
+        exit(1);
+    }
     strcpy(modelDesc, fci->hoursAheadGroup[0].hourlyModelStats[modelIndex].columnName);  // should be something like ncep_RAP_DSWRF_1
     modelDesc[strlen(modelDesc)-2] = '\0';   // lop off the _1 => ncep_RAP_DSWRF
 
@@ -1527,7 +1555,7 @@ void printHourlySummary(forecastInputType *fci, int hoursAheadIndex, int hoursAf
     fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "N for group", modelRun->numValidSamples);
     fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "ground GHI", modelRun->ground_N);
     for(modelIndex=-1; modelIndex < fci->numModels; modelIndex++) {
-        if(modelIndex < 0 || modelRun->hourlyModelStats[modelIndex].isActive)
+        if(modelIndex < 0 || modelRun->hourlyModelStats[modelIndex].isOn)
             fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, getGenericModelName(fci, modelIndex), getModelN(modelIndex));
     }
 }
@@ -1539,7 +1567,7 @@ void printHoursAheadSummaryCsv(forecastInputType *fci)
     char modelName[1024], tempFileName[2048];
     
     //sprintf(filename, "%s/%s.wtRange=%.2f-%.2f_ha=%d-%d.csv", fci->outputDirectory, fci->siteName, fci->weightSumLowCutoff, fci->weightSumHighCutoff, fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead);
-    sprintf(tempFileName, "%s/forecastSummary.%s.%s-%s.div=%d.hours=%d-%d.csv", fci->outputDirectory, genProxySiteName(fci), dtToStringDateOnly(&fci->startDate), dtToStringDateOnly(&fci->endDate), fci->numDivisions, fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead);
+    sprintf(tempFileName, "%s/forecastSummary.%s.%s-%s.div=%d.hours=%d-%d.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), dtToStringDateOnly(&fci->startDate), dtToStringDateOnly(&fci->endDate), fci->numDivisions, fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead, fci->modelPermutations.currentPermutationIndex);
     fci->summaryFile.fileName = strdup(tempFileName);
     
     if((fci->summaryFile.fp = fopen(fci->summaryFile.fileName, "w")) == NULL) {
@@ -1564,14 +1592,14 @@ void printHoursAheadSummaryCsv(forecastInputType *fci)
         fprintf(fci->summaryFile.fp, "%d,%d,%.2f,%.2f,%.2f,%ld,%ld,%ld,%ld", modelRun->hoursAhead, modelRun->numValidSamples, modelRun->satModelStats.rmsePct * 100,
                 modelRun->optimizedRMSEphase1 * 100, modelRun->optimizedRMSEphase2 * 100, modelRun->phase1SumWeightsCalls, modelRun->phase1RMSEcalls, modelRun->phase2SumWeightsCalls, modelRun->phase2RMSEcalls);
         for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {           
-            //if(modelRun->hourlyModelStats[modelIndex].isActive) {
+            //if(modelRun->hourlyModelStats[modelIndex].isOn) {
                 fprintf(fci->summaryFile.fp, ",%s", modelRun->hourlyModelStats[modelIndex].isReference ? "reference" : "forecast"
 );
-                fprintf(fci->summaryFile.fp, ",%s", modelRun->hourlyModelStats[modelIndex].isActive ? "active" : "inactive");
-                fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isActive ? modelRun->hourlyModelStats[modelIndex].N : -999);
-                fprintf(fci->summaryFile.fp, ",%.2f", modelRun->hourlyModelStats[modelIndex].isActive ? modelRun->hourlyModelStats[modelIndex].rmsePct * 100 : -999);
-                fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isActive ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 : -999);   
-                fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isActive ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 : -999);   
+                fprintf(fci->summaryFile.fp, ",%s", modelRun->hourlyModelStats[modelIndex].isOn ? "on" : "off");
+                fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].N : -999);
+                fprintf(fci->summaryFile.fp, ",%.2f", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].rmsePct * 100 : -999);
+                fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 : -999);   
+                fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 : -999);   
             //}
         }
         fprintf(fci->summaryFile.fp, "\n");
@@ -1754,7 +1782,7 @@ void dumpWeightedTimeSeries(forecastInputType *fci, int hoursAheadIndex, int hou
             for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
                 thisModelErr = &modelRun->hourlyModelStats[modelIndex];
                             
-                if(modelRun->hourlyModelStats[modelIndex].isActive) {
+                if(modelRun->hourlyModelStats[modelIndex].isOn) {
                     weight = thisModelErr->optimizedWeightPhase2;
                     thisSample->optimizedGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                     weightTotal += weight;            
@@ -1804,7 +1832,7 @@ int getModelIndex(forecastInputType *fci, char *modelName)
     int modelIndex;
     char *currName;
     
-    for(modelIndex=0; modelIndex<=fci->numModels; modelIndex++) {
+    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
         currName = getGenericModelName(fci, modelIndex);
         if(strcmp(currName, modelName) == 0)
              return modelIndex;
@@ -1825,4 +1853,97 @@ char *parseEquals(char *inString)
     }
     
     return fields[1];
+}
+
+
+void initPermutationSwitches(forecastInputType *fci)
+{
+    permutationType *perm = &fci->modelPermutations;
+    int p;
+    
+    perm->numPermutations = pow(2, fci->numContribModels);
+    
+/*
+ for numModels = 5, numPermutations = 32
+ bitfields for permutationIndex would look like:
+    1 = 0000 0001
+    2 = 0000 0010
+    3 = 0000 0011
+    [...]
+   23 = 0001 0111
+   24 = 0001 1000
+   25 = 0001 1001
+   26 = 0001 1010
+    [...]
+   31 = 0001 1111  <= all model on
+*/
+    for(p=0; p < fci->numContribModels; p++) {
+        perm->masks[p] = 1 << p;  // shift binary 1 left to form mask
+//        fprintf(stderr, "mask for %d : %X\n", p, perm->masks[p]);
+    }
+    
+    perm->currentPermutationIndex = perm->numPermutations-1;  
+}
+
+// for informational purposes
+#define ModelMask1  0x001
+#define ModelMask2  0x002
+#define ModelMask3  0x004
+#define ModelMask4  0x008
+#define ModelMask5  0x010
+#define ModelMask6  0x020
+#define ModelMask7  0x040
+#define ModelMask8  0x080
+#define ModelMask9  0x100
+#define ModelMask10 0x200
+
+void setPermutationSwitches(forecastInputType *fci, int permutationIndex)
+{
+    int i;
+    permutationType *perm = &fci->modelPermutations;
+    
+    if(perm->numPermutations == 0)
+        initPermutationSwitches(fci);
+    
+    if(permutationIndex >= perm->numPermutations || permutationIndex < 1) {
+        FatalError("setPermutationSwitches()", "Got permutation index out of range.");
+    }
+    
+    perm->currentPermutationIndex = permutationIndex;
+
+    for(i=0;i < fci->numModels; i++) {
+        perm->modelSwitches[i] = permutationIndex & perm->masks[i];
+    }
+    
+    fprintf(stderr, "for permutationIndex %d: ", permutationIndex);
+    for(i=fci->numModels-1; i >= 0; i--) { fprintf(stderr, "%c", perm->modelSwitches[i] ? '1' : '0'); }
+    fprintf(stderr, "\n");
+}
+
+void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int permutationIndex)
+{
+    int i,maskInd;
+    permutationType *perm = &fci->modelPermutations;
+    modelRunType *modelRun;
+    modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
+
+    perm->currentPermutationIndex = permutationIndex;
+    
+    fprintf(stderr, "\n=== Setting model permutation switches for %d ===\n", permutationIndex);
+    for(i=0,maskInd=0;i < fci->numModels; i++) {
+        // if model is active (i.e., there's data) and not a reference model
+        if(!modelRun->hourlyModelStats[i].isActive) {
+            modelRun->hourlyModelStats[i].isOn = False;  // if it's not active, it's not on
+        }
+        else if(modelRun->hourlyModelStats[i].isReference) {
+            fprintf(stderr, "model %s is reference\n", getGenericModelName(fci, i));
+            modelRun->hourlyModelStats[i].isOn = True;
+        }
+        else {
+            modelRun->hourlyModelStats[i].isOn = (permutationIndex & perm->masks[maskInd]);
+            fprintf(stderr, "model %s is %s\n", getGenericModelName(fci, i), modelRun->hourlyModelStats[i].isActive ? "on" : "off");
+            maskInd++;
+        }
+    }
+    fprintf(stderr, "=== done ===\n");
 }

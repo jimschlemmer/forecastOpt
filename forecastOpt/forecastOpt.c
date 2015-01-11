@@ -3,6 +3,10 @@
  */
 
 /* todo
+ * 1) numModelReporting should be just one file, not one for every perm
+ * 2) *modelMix.HA_HAS.allPermutations.csv is stopping after perm 1
+ * 3) *forecastSummary* is only generating a file for perm 1
+ * 4) in v4 runs, first hour is often missing (west)
  */
 
 #include "forecastOpt.h"
@@ -16,7 +20,7 @@
 void help(void);
 void version(void);
 void processForecast(forecastInputType *fci);
-void runErrorAnalysis(forecastInputType *fci);
+void runErrorAnalysis(forecastInputType *fci, int permutationIndex);
 
 char *Progname;
 char ErrStr[4096];
@@ -100,7 +104,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
             case 'w': { fci->modelMixFileInput.fileName = strdup(optarg);
                         fci->runWeightedErrorAnalysis = True;
                         break; }
-            case 'p': { fci->genModelMixPermutations = False; 
+            case 'p': { fci->doModelPermutations = False; 
                         break; } 
             default:  return False;         
         }       
@@ -110,6 +114,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
       fci->forecastTableFile.fileName = strdup(argV[optind]);
     }
     else {
+        fprintf(stderr, "\nNo forecast table specified!\n");
         help();
         return False;
     }
@@ -147,6 +152,7 @@ void version(void)
 void processForecast(forecastInputType *fci)
 {        
     time_t start;
+    int permutationIndex;
     
     start = time(NULL);
     fprintf(stderr, "=== Starting processing at %s\n", timeOfDayStr());
@@ -154,22 +160,28 @@ void processForecast(forecastInputType *fci)
     fprintf(stderr, "%s\n", dtToStringDateTime(&fci->endDate));
     fprintf(stderr, "=== Weight sum range: %d to %d\n", fci->weightSumLowCutoff, fci->weightSumHighCutoff);
 
-    readForecastFile(fci);  // this reads in all the forecast data (either single or composite) for all forecast horizons
+    readForecastFile(fci);  // this reads in all the forecast data (either single site or composite) for all forecast horizons
     
     if(fci->runHoursAfterSunrise) 
         copyHoursAfterData(fci);
+    
     fprintf(stderr, "=== Hours Ahead: %d to %d\n", fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead);
     fprintf(stderr, "=== Number of    input records: %d\n", fci->numInputRecords);
     fprintf(stderr, "=== Number of daylight records: %d\n", fci->numDaylightRecords);
-               
-    runErrorAnalysis(fci);
+
+    initPermutationSwitches(fci);
+    
+    for(permutationIndex = 1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
+        runErrorAnalysis(fci, permutationIndex);  // for example, 1 to 31
+    }
+
      
     fprintf(stderr, "=== Ending at %s\n", timeOfDayStr());
     fprintf(stderr, "=== Elapsed time: %s\n", getElapsedTime(start));
     return;
 }
 
-void runErrorAnalysis(forecastInputType *fci) 
+void runErrorAnalysis(forecastInputType *fci, int permutationIndex) 
 {
     int hoursAheadIndex, hoursAfterSunriseIndex;
     
@@ -177,6 +189,7 @@ void runErrorAnalysis(forecastInputType *fci)
         for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
             int numHASwithData = 0;
             for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+                setModelSwitches(fci, hoursAheadIndex, hoursAfterSunriseIndex, permutationIndex);
                 fprintf(stderr, "\n############ Running for hour ahead %d, hour after sunrise %d\n\n", 
                         fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAhead, fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAfterSunrise);
                 computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex);
@@ -207,6 +220,7 @@ void runErrorAnalysis(forecastInputType *fci)
     else {
         for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
             fprintf(stderr, "\n############ Running for hour ahead %d\n\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
+            setModelSwitches(fci, hoursAheadIndex, -1, permutationIndex);
             computeModelRMSE(fci, hoursAheadIndex, -1);
             dumpNumModelsReportingTable(fci);
             printRmseTableHour(fci, hoursAheadIndex, -1);

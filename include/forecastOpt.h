@@ -1,5 +1,4 @@
-/* 
- * File:   forecastOpt.h
+/* File:   forecastOpt.h
  * Author: jimschlemmer
  *
  * Created on July 30, 2013, 11:24 AM
@@ -62,6 +61,8 @@ extern "C" {
 #define MIN_IRR -25
 #define MAX_IRR 1500
 
+//#define isContributingModel(model) (model.isActive && !model.isReference)
+
 typedef enum { MKunset, regular } modelKindType;
 
 typedef struct {
@@ -74,7 +75,7 @@ typedef struct {
     int optimizedWeightPhase1;  // the value associated with the minimized RMSE for all models in pass 1
     int optimizedWeightPhase2;  // the value associated with the minimized RMSE for all models in pass 2
     int N;
-    char isActive, isReference, isContributingModel, tooMuchDataMissing;
+    char isActive, isOn, isReference, tooMuchDataMissing;
     long long powerOfTen;
 } modelStatsType;
 
@@ -134,10 +135,17 @@ typedef struct {
 } fileType;
 
 typedef struct {
+    int numPermutations;  // e.g., 32 for numModels==5
+    int masks[MAX_MODELS];     // 0001 0010 0100 1000, etc.  
+    int currentPermutationIndex;  // one of switchIndexes
+    int modelSwitches[MAX_MODELS];  // = mask[i] applied to currentPermutationIndex
+} permutationType;
+
+typedef struct {
     fileType forecastTableFile;
     fileType warningsFile;
     fileType descriptionFile;
-    fileType weightsFile;
+    fileType weightTableFile;
     fileType modelsAttendenceFile;
     fileType summaryFile;
     char *modelMixDirectory;
@@ -148,9 +156,9 @@ typedef struct {
     columnType columnInfo[MAX_MODELS * MAX_HOURS_AHEAD];
     modelRunType hoursAheadGroup[MAX_HOURS_AHEAD];
     modelRunType hoursAfterSunriseGroup[MAX_HOURS_AFTER_SUNRISE][MAX_HOURS_AFTER_SUNRISE];
-    int hoursAheadMap[MAX_HOURS_AHEAD];
     int numColumnInfoEntries;
     int numModels;
+    int numContribModels;
     int numHeaderFields;
     int numDivisions;
     int increment1, increment2, refinementBase;
@@ -183,7 +191,8 @@ typedef struct {
     char runHoursAfterSunrise;
     int maxHoursAfterSunrise;
     char gotConfigFile, gotForecastFile;
-    char genModelMixPermutations;
+    char doModelPermutations;
+    permutationType modelPermutations;
 } forecastInputType;
 
 int computeModelRMSE(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
@@ -208,6 +217,9 @@ char *genProxySiteName(forecastInputType *fci);
 int readModelMixFile(forecastInputType *fci);
 int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex);
 void genPermutationMatrix(forecastInputType *fci);
-
+void initPermutationSwitches(forecastInputType *fci);
+void setPermutationSwitches(forecastInputType *fci, int permutationIndex);
+int isContributingModel(modelStatsType *model);
+void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int permutationIndex);
 #endif	/* FORECASTOPT_H */
 

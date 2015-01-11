@@ -170,7 +170,7 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     //int hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
         //modelData->hourlyModelStats[modelIndex].isActive = (getMaxHoursAhead(fci, modelIndex) >= hoursAhead);
-        if(modelRun->hourlyModelStats[modelIndex].isContributingModel) {
+        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {
             // activeModel[numActiveModels] = modelIndex;   
             stats[numActiveModels+1] = &modelRun->hourlyModelStats[modelIndex];
             numActiveModels++;
@@ -306,7 +306,7 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
 
     // copy over optimized weights from phase 1 to phase 2 in case phase 2 doesn't improve on phase 1
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(modelRun->hourlyModelStats[modelIndex].isContributingModel) {
+        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {
             modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 = modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1;
         }  
     }
@@ -447,7 +447,7 @@ void dumpWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunr
     fprintf(stderr, ":\n");
 
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(modelRun->hourlyModelStats[modelIndex].isContributingModel) {           
+        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {           
             fprintf(stderr, "\t%-35s = %-8d\n", getGenericModelName(fci, modelIndex), phase < 2 ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 : modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2);
         }
     }    
@@ -472,7 +472,7 @@ void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfte
             fprintf(stderr, "%ld sumWeight and %ld RMSE calls  @ %s new low RMSE (phase 2) = %.3f%% wts=", modelRun->phase2SumWeightsCalls, modelRun->phase2RMSEcalls, getElapsedTime(Start_t), minRmse * 100);
     }
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(modelRun->hourlyModelStats[modelIndex].isContributingModel) {
+        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {
             if(fci->inPhase1) {
                 modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 = modelRun->hourlyModelStats[modelIndex].weight;
                 if(fci->verbose) 
@@ -504,7 +504,7 @@ int sumWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunris
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
     weightSum = 0;
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(modelRun->hourlyModelStats[modelIndex].isContributingModel) {
+        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {
 #ifdef DUMP_ALL_WEIGHTS
             fprintf(stderr, "%d-%d ", modelIndex, modelRun->hourlyModelStats[modelIndex].weight);
 #endif
@@ -528,7 +528,7 @@ int weightSumLimitExceeded(forecastInputType *fci, int hoursAheadIndex, int hour
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
     weightSum = 0;
     for(modelIndex=0; modelIndex < maxModelIndex-1; modelIndex++) {
-        if(modelRun->hourlyModelStats[modelIndex].isContributingModel) {
+        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {
 #ifdef DUMP_ALL_WEIGHTS
             fprintf(stderr, "%d-%d ", modelIndex, modelRun->hourlyModelStats[modelIndex].weight);
 #endif

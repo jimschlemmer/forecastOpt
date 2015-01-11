@@ -10,9 +10,17 @@
  * where only, say, 3 out of 4 of the models are present and the weights of the 3 present
  * models only add up to .52, leading to a low and probably quite erroneous GHI 
  * estimation.
+ * 
+ *   config/command line options to accamodate lat/lon window
+ *   sql code and config for grid file identification
+ *   lat/lon wrapper to cycle over all points
+ *   output change format from csv to grid files
+ *   debugging output changes
+ * 
  */
 
 #include "forecastOpt.h"
+#include "forecastOptUtils.h"
 
 #define VERSION "1.0"
 
@@ -29,7 +37,7 @@
 void help(void);
 void version(void);
 int  parseArgs(forecastInputType *fci, int argC, char **argV);
-int runWeightedTimeSeriesAnalysis(forecastInputType *fci);
+int  runWeightedTimeSeriesAnalysis(forecastInputType *fci);
 
 char *Progname;
 char ErrStr[4096];
@@ -216,7 +224,7 @@ int readModelMixFile(forecastInputType *fci)
     expectedNumFields = numFields;  
     
     if(strcmp(fields[0], "HA") != 0) {
-        sprintf(ErrStr, "Got header line without HA as first column: %s", line);
+        sprintf(ErrStr, "Got header line without HA as first column: got %s instead", line);
         FatalError("readModelMixFile()", ErrStr);
     }
     // now, if the next column is HAS we need to run with hour-ahead
@@ -283,9 +291,10 @@ int readModelMixFile(forecastInputType *fci)
             }
             modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];              
             modelRun->hourlyModelStats[modelIndex].isReference = False;
-            modelRun->hourlyModelStats[modelIndex].isActive = weight != -999;
-            modelRun->hourlyModelStats[modelIndex].isContributingModel = (weight != -999);  // !isReference && isActive
-            modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 = weight;  // set all the weights to this one weight
+            modelRun->hourlyModelStats[modelIndex].isActive = modelRun->hourlyModelStats[modelIndex].isOn = (weight != -999);
+            // also set the HA-only data structure fields for isActive and isOn
+            fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive = fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isOn = (weight != -999);
+            modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 = weight;  // set all the weights to this one weight so we can't go wrong
             modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 = weight;
             modelRun->hourlyModelStats[modelIndex].weight = weight;
         }
@@ -302,10 +311,10 @@ int readModelMixFile(forecastInputType *fci)
     return True;
 }
 
+//#define DEBUG_RUN_WEIGHTED
 int runWeightedTimeSeriesAnalysis(forecastInputType *fci)
 {
     int hoursAheadIndex, hoursAfterSunriseIndex;
- //        fprintf(stderr, "fci->timeSeries[0] = %p\n", &fci->timeSeries[0]);
 
     readForecastFile(fci);
 
@@ -321,6 +330,10 @@ int runWeightedTimeSeriesAnalysis(forecastInputType *fci)
                 computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex);
                 fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].optimizedRMSEphase2 = 
                         fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].weightedModelStats.rmsePct;
+#ifdef DEBUG_RUN_WEIGHTED
+                fprintf(stderr, "\n=== Hours ahead = %d HAS = %d ===\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead, hoursAfterSunriseIndex+1);
+                fprintf(stderr, "\nRMSE = %0.1f, N=%d\n", fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].weightedModelStats.rmsePct * 100, fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].weightedModelStats.N);
+#endif                
             }
             dumpHourlyOptimizedTS(fci, hoursAheadIndex);
             dumpModelMixRMSE(fci, hoursAheadIndex);

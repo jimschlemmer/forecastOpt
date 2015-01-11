@@ -7,21 +7,21 @@ FORECASTLIB = ${LIBDIR}/forecastLib.a
 INC	= -I./${INCLUDEDIR} # -I./include -I/usr/include 
 
 #CC	= cc 
-CFLAGS = -O3 -march=nocona -rdynamic ${INC} 
-#CFLAGS = -g -rdynamic -Wall ${INC} 
+#CFLAGS = -O3 -march=nocona -rdynamic ${INC} 
+CFLAGS = -g -Wall ${INC} 
 #CFLAGS = -pg -Wall ${INC} 
-LIBS	= -lm -ldbi -ldl
+LIBS	= -lm
 OBJS	= forecastRun.o
 
 .c.o:
 	${CC} ${CFLAGS} -c $*.c
 
-forecastRun: checkForecastLib ${OBJS} 
+forecastRun:	checkForecastLib ${OBJS} 
 	${CC} -o forecastRun ${OBJS} ${LIBS} ${CFLAGS} ${FORECASTLIB}
 
 checkForecastLib: 
 	make -C ${LIBDIR} -f Makefile.forecastLib
 
 clean:
-	rm -f ${OBJS}
+	rm -f ${OBJS} ../forecastLib/*.o
 
