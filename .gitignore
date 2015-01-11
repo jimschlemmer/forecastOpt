@@ -8,6 +8,8 @@
 *.so
 *.a
 forecastRun/nbproject
+forecastRun/nbproject/*
 forecastRun/forecastRun
 forecastOpt/nbproject
+forecastOpt/nbproject/*
 forecastOpt/forecastOpt
