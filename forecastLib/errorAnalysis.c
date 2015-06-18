@@ -114,10 +114,10 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
                     // break;
                 }     
                 else { // if this model's GHI didn't trigger an isValid=False, increment N
-//#ifdef DEBUG1
+#ifdef DEBUG1
                     fprintf(stderr, "%s hours ahead %d: good sample: model %s: GHI = %.1f\n", 
                          dtToStringCsv2(&thisSample->dateTime), modelRun->hoursAhead, getGenericModelName(fci, modelIndex), thisGHI);
-//#endif                                   
+#endif                                   
                     modelRun->hourlyModelStats[modelIndex].N++;
                 }
             }
@@ -859,7 +859,7 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, 
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
         thisModelStats = &modelRun->hourlyModelStats[modelIndex];
         if(modelRun->hourlyModelStats[modelIndex].isActive) 
-            fprintf(stderr, "%d ", thisModelStats->weight);
+            fprintf(stderr, "modelIndex=%d weight=%d ", modelIndex, thisModelStats->weight);
     }
     fprintf(stderr, "RSME=%.1f N=%d\n", weightedModelErr->rmsePct * 100, weightedModelErr->N);
 #endif
@@ -904,8 +904,10 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
             fprintf(fci->modelMixFileOutput.fp, "perm,HA");
         
         for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {    
-            if(!modelRun->hourlyModelStats[modelIndex].isReference)
+            if(!modelRun->hourlyModelStats[modelIndex].isReference) {
+                fprintf(stderr, "modelIndex = %d modelName = %s\n", modelIndex, getGenericModelName(fci, modelIndex));
                 fprintf(fci->modelMixFileOutput.fp, ",%s", getGenericModelName(fci, modelIndex));
+            }
         }
         fprintf(fci->modelMixFileOutput.fp, ",N,RMSE\n");
     }

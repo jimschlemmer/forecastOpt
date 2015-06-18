@@ -3,13 +3,13 @@
 
 char ErrStr[4096];
 
-int  allocatedSamples, HashLineNumber=1;
+int allocatedSamples, HashLineNumber = 1;
 
 //
 // Print message and exit with specific exitCode
 //
-void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode)
-{
+
+void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode) {
     fprintf(stderr, "FATAL: %s: %s in %s at line %d\n", functName, errStr, file, linenumber);
     exit(exitCode);
 }
@@ -17,28 +17,26 @@ void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linen
 //
 // Print message and exit with exit code = 1
 //
-void fatalError(char *functName, char *errStr, char *file, int linenumber)
-{
+
+void fatalError(char *functName, char *errStr, char *file, int linenumber) {
     int exitCode = 1;
     fatalErrorWithExitCode(functName, errStr, file, linenumber, exitCode);
 }
 
-
-int readForecastFile(forecastInputType *fci)
-{
+int readForecastFile(forecastInputType *fci) {
     char line[LINE_LENGTH];
     int numFields;
     double lat, lon;
     char *fields[MAX_FIELDS], *fldPtr;
-    dateTimeType currDate;    
+    dateTimeType currDate;
     timeSeriesType *thisSample;
-    char firstLine=True;
-    
-    if((fci->forecastTableFile.fp = fopen(fci->forecastTableFile.fileName, "r")) == NULL) {
+    char firstLine = True;
+
+    if ((fci->forecastTableFile.fp = fopen(fci->forecastTableFile.fileName, "r")) == NULL) {
         sprintf(ErrStr, "Couldn't open input file %s : %s", fci->forecastTableFile.fileName, strerror(errno));
         FatalError("readForecastFile()", ErrStr);
     }
-    
+
     /*
     0 siteGroup	
     1 siteName	
@@ -59,168 +57,163 @@ int readForecastFile(forecastInputType *fci)
     16 clear_ghi	
     17 CosSolarZenithAngle	
     18 ncep_RAP_DSWRF_1 ...
-    */
+     */
 
-    
-    while(fgets(line, LINE_LENGTH, fci->forecastTableFile.fp)) {
+
+    while (fgets(line, LINE_LENGTH, fci->forecastTableFile.fp)) {
         fci->forecastLineNumber++;
-        
-        if(strstr(line, "site")) {
-            if(fci->numSites > 0) {
-                if(strcasecmp(fci->forecastHeaderLine, line) != 0) {
+
+        if (strstr(line, "site")) {
+            if (fci->numSites > 0) {
+                if (strcasecmp(fci->forecastHeaderLine, line) != 0) {
                     sprintf(ErrStr, "Header line changed from: %s\n\nto\n\n%s\n", fci->forecastHeaderLine, line);
                     FatalError("readForecastFile()", ErrStr);
                 }
-            }
-            else
-                fci->forecastHeaderLine = strdup(line);  // save for later
+            } else
+                fci->forecastHeaderLine = strdup(line); // save for later
             firstLine = True;
             continue;
-        }        
+        }
 
-        else if(firstLine) {
+        else if (firstLine) {
             firstLine = False;
             setSiteInfo(fci, line);
-            if(fci->numSites == 1)
+            if (fci->numSites == 1)
                 scanHeaderLine(fci);
         }
-        
-        numFields = split(line, fields, MAX_FIELDS, fci->delimiter);  /* split line */  
-        if(numFields != fci->numHeaderFields) {
-            sprintf(ErrStr, "Scanning line %d of file %s, got %d columns using delimiter \"%s\" but was expecting %d based on header line.", 
+
+        numFields = split(line, fields, MAX_FIELDS, fci->delimiter); /* split line */
+        if (numFields != fci->numHeaderFields) {
+            sprintf(ErrStr, "Scanning line %d of file %s, got %d columns using delimiter \"%s\" but was expecting %d based on header line.",
                     fci->forecastLineNumber, fci->forecastTableFile.fileName, numFields, fci->delimiter, fci->numHeaderFields);
             FatalError("readForecastFile()", ErrStr);
         }
-                
+
         // date & time
-        if(!parseDateTime(fci, &currDate, fields[4]))
+        if (!parseDateTime(fci, &currDate, fields[4]))
             continue;
-        
+
         incrementTimeSeries(fci);
-        thisSample = &(fci->timeSeries[fci->numTotalSamples - 1]);  // switched these two lines
+        thisSample = &(fci->timeSeries[fci->numTotalSamples - 1]); // switched these two lines
         thisSample->dateTime = currDate;
 
         // siteGroup
         fldPtr = fields[0];
-        if(fci->siteGroup == NULL) {
+        if (fci->siteGroup == NULL) {
             fci->siteGroup = strdup(fldPtr);
-        }
-        else if(strcasecmp(fldPtr, fci->siteGroup) != 0) {
-            if(1 || fci->multipleSites) {
+        } else if (strcasecmp(fldPtr, fci->siteGroup) != 0) {
+            if (1 || fci->multipleSites) {
                 fprintf(fci->warningsFile.fp, "Note: switching site group from [%s] to [%s]\n", fci->siteGroup, fldPtr);
                 free(fci->siteGroup);
                 fci->siteGroup = strdup(fldPtr);
-            }
-            else {
+            } else {
                 fprintf(stderr, "Warning: siteGroup changed from [%s] to [%s]\n", fci->siteGroup, fldPtr);
             }
         }
-        
+
         // siteName
-/*
-        fldPtr = fields[1];
-        if(strcasecmp(fldPtr, fci->siteName) != 0) {
-            if(fci->multipleSites) {
-                    fprintf(fci->warningsFile.fp, "Note: switching site from [%s] to [%s]\n", fci->siteName, fldPtr);
-                    free(fci->siteName);
-                    fci->siteName = strdup(fldPtr);
-            }
-            else {
-                fprintf(stderr, "Warning: siteName changed from [%s] to [%s]\n", fci->siteName, fldPtr);
-            }
-        }
-*/
-                
+        /*
+                fldPtr = fields[1];
+                if(strcasecmp(fldPtr, fci->siteName) != 0) {
+                    if(fci->multipleSites) {
+                            fprintf(fci->warningsFile.fp, "Note: switching site from [%s] to [%s]\n", fci->siteName, fldPtr);
+                            free(fci->siteName);
+                            fci->siteName = strdup(fldPtr);
+                    }
+                    else {
+                        fprintf(stderr, "Warning: siteName changed from [%s] to [%s]\n", fci->siteName, fldPtr);
+                    }
+                }
+         */
+
         // lat & lon
         lat = atof(fields[2]);
         lon = atof(fields[3]);
 
-        if(!fci->multipleSites && fci->lat != -999 && fabs(lat - fci->lat) > 0.01) {
+        if (!fci->multipleSites && fci->lat != -999 && fabs(lat - fci->lat) > 0.01) {
             fprintf(fci->warningsFile.fp, "Warning: latitude changed from %.3f to %.3f\n", fci->lat, lat);
         }
-        if(!fci->multipleSites && fci->lon != -999 && fabs(lon - fci->lon) > 0.01) {
+        if (!fci->multipleSites && fci->lon != -999 && fabs(lon - fci->lon) > 0.01) {
             fprintf(fci->warningsFile.fp, "Warning: longitude changed from %.3f to %.3f\n", fci->lon, lon);
-        }        
+        }
         fci->lat = lat;
         fci->lon = lon;
-                
+
         (void) readDataFromLine(fci, fields, numFields);
-//#define USE_ZENITH_INSTEAD_OF_HAS
+        //#define USE_ZENITH_INSTEAD_OF_HAS
         // compute hours after sunrise this date/time
-        thisSample->sunrise = calculateSunrise(&currDate, fci->lat, fci->lon);  // Get the sunrise time for this day
-        if(thisSample->sunIsUp) {
+        thisSample->sunrise = calculateSunrise(&currDate, fci->lat, fci->lon); // Get the sunrise time for this day
+        if (thisSample->sunIsUp) {
 #ifdef USE_ZENITH_INSTEAD_OF_HAS
-            thisSample->hoursAfterSunrise = (int) ((90 - thisSample->zenith)/10) + 1;  // 9 buckets of 10 degrees each
+            thisSample->hoursAfterSunrise = (int) ((90 - thisSample->zenith) / 10) + 1; // 9 buckets of 10 degrees each
 #else
             thisSample->hoursAfterSunrise = thisSample->dateTime.hour - thisSample->sunrise.hour;
-            if(thisSample->hoursAfterSunrise < 1)
+            if (thisSample->hoursAfterSunrise < 1)
                 thisSample->hoursAfterSunrise += 24;
-            if(thisSample->hoursAfterSunrise >= 24)
+            if (thisSample->hoursAfterSunrise >= 24)
                 thisSample->hoursAfterSunrise = 1;
-            
+
 #ifdef DEBUG_HAS
             fprintf(stderr, "%s,%.4f,%.4f,time=%s,", fci->siteName, fci->lat, fci->lon, dtToStringDateTime(&thisSample->dateTime));
             fprintf(stderr, "sunrise=%s,hoursAfterSunrise=%d\n", dtToStringDateTime(&thisSample->sunrise), thisSample->hoursAfterSunrise);
 #endif
-            
+
 #endif
         }
-
         else
             thisSample->hoursAfterSunrise = -1;
 
         fci->numInputRecords++;
     }
-    
+
     studyData(fci);
-    
+
     fci->gotForecastFile = True;
-    
+
     return True;
 }
 
-void setSiteInfo(forecastInputType *fci, char *line)
-{
+void setSiteInfo(forecastInputType *fci, char *line) {
     char *tempLine = strdup(line);
     char *fields[MAX_FIELDS];
     char tempFileName[2048];
-        
-    fci->numHeaderFields = split(tempLine, fields, MAX_FIELDS, fci->delimiter);  /* split line */
+
+    fci->numHeaderFields = split(tempLine, fields, MAX_FIELDS, fci->delimiter); /* split line */
     fci->siteName = strdup(fields[1]);
     fprintf(stderr, "=== Setting site to %s ===\n", fci->siteName);
     fci->thisSite = &fci->allSiteInfo[fci->numSites];
-    
+
     // Now that we know the site name we can open the warnings file
-    if(fci->multipleSites)
-        sprintf(tempFileName, "%s/MultiSite-site%d-%s.warnings.perm%02d.txt", fci->outputDirectory, fci->numSites+1, fci->siteName, fci->modelPermutations.currentPermutationIndex);
+    if (fci->multipleSites)
+        sprintf(tempFileName, "%s/MultiSite-site%d-%s.warnings.perm%02d.txt", fci->outputDirectory, fci->numSites + 1, fci->siteName, fci->modelPermutations.currentPermutationIndex);
     else
         sprintf(tempFileName, "%s/%s.warnings.perm%02d.txt", fci->outputDirectory, fci->siteName, fci->modelPermutations.currentPermutationIndex);
-    
-    if(fci->warningsFile.fp != NULL)
+
+    if (fci->warningsFile.fp != NULL)
         fclose(fci->warningsFile.fp);
     fci->warningsFile.fileName = strdup(tempFileName);
-    if((fci->warningsFile.fp = fopen(fci->warningsFile.fileName, "w")) == NULL) {
+    if ((fci->warningsFile.fp = fopen(fci->warningsFile.fileName, "w")) == NULL) {
         sprintf(ErrStr, "Couldn't open warnings file %s: %s", fci->warningsFile.fileName, strerror(errno));
         FatalError("setSiteInfo()", ErrStr);
     }
 
     fci->numSites++;
-    
+
     free(tempLine);
 }
 
 // this assumes fci->siteName has already been set by the input file parser
-void setSite(forecastInputType *fci)
-{
+
+void setSite(forecastInputType *fci) {
     int siteNum;
-    
-    for(siteNum=0; siteNum<fci->numSites; siteNum++) {
-        if(strcmp(fci->siteName, fci->allSiteInfo[siteNum].siteName) == 0) {
+
+    for (siteNum = 0; siteNum < fci->numSites; siteNum++) {
+        if (strcmp(fci->siteName, fci->allSiteInfo[siteNum].siteName) == 0) {
             fci->thisSite = &fci->allSiteInfo[siteNum];
             return;
         }
     }
-    
+
     fprintf(stderr, "Couldn't find site name \"%s\" in internal site list\n", fci->siteName);
     exit(1);
 }
@@ -228,92 +221,88 @@ void setSite(forecastInputType *fci)
 #define DT_FORMAT_1 1
 #define DT_FORMAT_2 2
 
-int parseDateTime(forecastInputType *fci, dateTimeType *dt, char *dateTimeStr)
-{
+int parseDateTime(forecastInputType *fci, dateTimeType *dt, char *dateTimeStr) {
     int dt_numFields;
     char *dt_fields[32];
     char origStr[1024];
     static char dtFormat = 0;
-    
+
     strcpy(origStr, dateTimeStr);
 
 #define DateTimeError { sprintf(ErrStr, "Bad date/time string in input, line %d:\n%s\n", fci->forecastLineNumber, origStr); FatalError("parseDateTime()", ErrStr); }
-    
-    if(!dtFormat) {
-        if(strstr(dateTimeStr, "-") != NULL)
-            dtFormat = DT_FORMAT_1;  // yyyy-mm-dd
+
+    if (!dtFormat) {
+        if (strstr(dateTimeStr, "-") != NULL)
+            dtFormat = DT_FORMAT_1; // yyyy-mm-dd
         else
-            dtFormat = DT_FORMAT_2;  // mm/dd/yyyy
+            dtFormat = DT_FORMAT_2; // mm/dd/yyyy
     }
-    
+
     dt_numFields = split(dateTimeStr, dt_fields, 32, " ");
     char *dt_date = strdup(dt_fields[0]);
     char *dt_time = strdup(dt_fields[1]);
-    
-    if(dt_date == NULL || strlen(dt_date) == 0) 
-        DateTimeError
-            
-    if(dt_time == NULL || strlen(dt_time) == 0) 
+
+    if (dt_date == NULL || strlen(dt_date) == 0)
         DateTimeError
 
-    if(dtFormat == DT_FORMAT_1) {    
-        dt_numFields = split(dt_date, dt_fields, 32, "-");  /* split date line */
-        if(dt_numFields != 3) 
+        if (dt_time == NULL || strlen(dt_time) == 0)
             DateTimeError
-            
-        dt->year  = atoi(dt_fields[0]);
-        dt->month = atoi(dt_fields[1]);
-        dt->day   = atoi(dt_fields[2]);
-    }
-    else {
-        dt_numFields = split(dt_date, dt_fields, 32, "/");  /* split date line */
-        if(dt_numFields != 3) 
-            DateTimeError
-            
-        dt->month  = atoi(dt_fields[0]);
-        dt->day = atoi(dt_fields[1]);
-        dt->year   = atoi(dt_fields[2]);
-    }
-    
-    dt_numFields = split(dt_time, dt_fields, 32, ":");  /* split time line */
-    if(dt_numFields < 2)
+
+            if (dtFormat == DT_FORMAT_1) {
+                dt_numFields = split(dt_date, dt_fields, 32, "-"); /* split date line */
+                if (dt_numFields != 3)
+                    DateTimeError
+
+                    dt->year = atoi(dt_fields[0]);
+                dt->month = atoi(dt_fields[1]);
+                dt->day = atoi(dt_fields[2]);
+            } else {
+                dt_numFields = split(dt_date, dt_fields, 32, "/"); /* split date line */
+                if (dt_numFields != 3)
+                    DateTimeError
+
+                    dt->month = atoi(dt_fields[0]);
+                dt->day = atoi(dt_fields[1]);
+                dt->year = atoi(dt_fields[2]);
+            }
+
+    dt_numFields = split(dt_time, dt_fields, 32, ":"); /* split time line */
+    if (dt_numFields < 2)
         DateTimeError
-            
-    dt->hour  = atoi(dt_fields[0]);
-    dt->min   = atoi(dt_fields[1]);
+
+        dt->hour = atoi(dt_fields[0]);
+    dt->min = atoi(dt_fields[1]);
     setObsTime(dt);
 
-    if(!dateTimeSanityCheck(dt))
+    if (!dateTimeSanityCheck(dt))
         FatalError("parseDateTime()", "Bad date/time string");
-    
+
     // finally, do a check to see if we're within the -a start,end range
-    if(fci->startDate.year > 1900) {
+    if (fci->startDate.year > 1900) {
         int inRange = (dt->obs_time >= fci->startDate.obs_time && dt->obs_time <= fci->endDate.obs_time);
-/*
-        if(!inRange)
-            fprintf(stderr, "%s not in range\n", dtToStringDateTime(dt));
-*/
-        return(inRange);
+        /*
+                if(!inRange)
+                    fprintf(stderr, "%s not in range\n", dtToStringDateTime(dt));
+         */
+        return (inRange);
     }
-    
+
     return True;
 }
 
 #define checkTooLow(X,Y) { if(thisSample->sunIsUp && thisSample->X < 1) { fprintf(fci->warningsFile.fp, "Warning: line %d: %s looks too low: %.1f\n", fci->forecastLineNumber, Y, thisSample->X); }}
 
-void copyHoursAfterData(forecastInputType *fci)
-{
+void copyHoursAfterData(forecastInputType *fci) {
     int hoursAheadIndex, hoursAfterSunriseIndex;
-    
-    for(hoursAheadIndex=0;hoursAheadIndex<fci->maxHoursAfterSunrise;hoursAheadIndex++)
-        for(hoursAfterSunriseIndex=0;hoursAfterSunriseIndex<fci->maxHoursAfterSunrise;hoursAfterSunriseIndex++) {
-                fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] = fci->hoursAheadGroup[hoursAheadIndex];
-                fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAfterSunrise = hoursAfterSunriseIndex + 1;
+
+    for (hoursAheadIndex = 0; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++)
+        for (hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+            fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] = fci->hoursAheadGroup[hoursAheadIndex];
+            fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAfterSunrise = hoursAfterSunriseIndex + 1;
         }
 }
 
-int readDataFromLine(forecastInputType *fci, char *fields[], int numFields)
-{
+int readDataFromLine(forecastInputType *fci, char *fields[], int numFields) {
     /*
     5 sr_zen	
     6 sr_global	
@@ -322,115 +311,114 @@ int readDataFromLine(forecastInputType *fci, char *fields[], int numFields)
     9 sr_temp	
     10 sr_wspd	
     11 sr_rh
-    */
+     */
 
 #ifdef DUMP_ALL_DATA
     static char firstTime = True;
     static char *filteredDataFileName = "filteredInputData.csv";
 #endif
-    
-    timeSeriesType *thisSample = &(fci->timeSeries[fci->numTotalSamples - 1]);  
-        
+
+    timeSeriesType *thisSample = &(fci->timeSeries[fci->numTotalSamples - 1]);
+
     thisSample->zenith = atof(fields[fci->columnInfo[fci->zenithCol].inputColumnNumber]);
-    if(thisSample->zenith < 0 || thisSample->zenith > 180) {
+    if (thisSample->zenith < 0 || thisSample->zenith > 180) {
         sprintf(ErrStr, "Got bad zenith angle at line %d: %.2f", fci->forecastLineNumber, thisSample->zenith);
         FatalError("readDataFromLine()", ErrStr);
     }
-    
-    thisSample->siteName = strdup(fci->siteName);  // for multiple site runs
-    
+
+    thisSample->siteName = strdup(fci->siteName); // for multiple site runs
+
     thisSample->sunIsUp = (thisSample->zenith < 90);
-    if(thisSample->sunIsUp)
+    if (thisSample->sunIsUp)
         fci->numDaylightRecords++;
-       
+
     thisSample->groundGHI = atof(fields[fci->columnInfo[fci->groundGHICol].inputColumnNumber]);
-/*
-    if(thisSample->sunIsUp && thisSample->groundGHI < 1)
-        fprintf(stderr, "Warning: line %d: groundGHI looks too low: %.1f\n", fci->forecastLineNumber, thisSample->groundGHI);
-*/
-    
-    if(thisSample->groundGHI < MIN_IRR || thisSample->groundGHI > MAX_IRR) {
+    /*
+        if(thisSample->sunIsUp && thisSample->groundGHI < 1)
+            fprintf(stderr, "Warning: line %d: groundGHI looks too low: %.1f\n", fci->forecastLineNumber, thisSample->groundGHI);
+     */
+
+    if (thisSample->groundGHI < MIN_IRR || thisSample->groundGHI > MAX_IRR) {
         sprintf(ErrStr, "Got bad surface GHI at line %d: %.2f", fci->forecastLineNumber, thisSample->groundGHI);
-        thisSample->groundGHI  = 0;
+        thisSample->groundGHI = 0;
         //FatalError("readDataFromLine()", ErrStr);
     }
     //checkTooLow(groundGHI, "groundGHI");
-    if(thisSample->sunIsUp && thisSample->groundGHI < 1)  
+    if (thisSample->sunIsUp && thisSample->groundGHI < 1)
         fprintf(fci->warningsFile.fp, "Warning: line %d: %s looks too low: %.1f\n", fci->forecastLineNumber, "groundGHI", thisSample->groundGHI);
-/*
-    if(thisSample->groundGHI < MIN_GHI_VAL)
-        thisSample->isValid = False;
-*/
-    
+    /*
+        if(thisSample->groundGHI < MIN_GHI_VAL)
+            thisSample->isValid = False;
+     */
+
     thisSample->groundDNI = atof(fields[fci->columnInfo[fci->groundDNICol].inputColumnNumber]);
-    if(thisSample->groundDNI < MIN_IRR || thisSample->groundDNI > MAX_IRR) {
+    if (thisSample->groundDNI < MIN_IRR || thisSample->groundDNI > MAX_IRR) {
         sprintf(ErrStr, "Got bad surface DNI at line %d: %.2f", fci->forecastLineNumber, thisSample->groundDNI);
         thisSample->groundDNI = 0;
         //FatalError("readDataFromLine()", ErrStr);
     }
-    
+
     thisSample->groundDiffuse = atof(fields[fci->columnInfo[fci->groundDiffuseCol].inputColumnNumber]);
-    if(thisSample->groundDiffuse < MIN_IRR || thisSample->groundDiffuse > MAX_IRR) {
+    if (thisSample->groundDiffuse < MIN_IRR || thisSample->groundDiffuse > MAX_IRR) {
         sprintf(ErrStr, "Got bad surface diffuse at line %d: %.2f", fci->forecastLineNumber, thisSample->groundDiffuse);
         thisSample->groundDiffuse = 0;
         //FatalError("readDataFromLine()", ErrStr);
-    }  
-    
+    }
+
     thisSample->clearskyGHI = atof(fields[fci->columnInfo[fci->clearskyGHICol].inputColumnNumber]);
-    if(thisSample->clearskyGHI < MIN_IRR || thisSample->clearskyGHI > MAX_IRR) {
+    if (thisSample->clearskyGHI < MIN_IRR || thisSample->clearskyGHI > MAX_IRR) {
         sprintf(ErrStr, "Got bad clearsky GHI at line %d: %.2f", fci->forecastLineNumber, thisSample->clearskyGHI);
         FatalError("readDataFromLine()", ErrStr);
     }
     checkTooLow(clearskyGHI, "clearskyGHI");
-    
+
     thisSample->satGHI = atof(fields[fci->columnInfo[fci->satGHICol].inputColumnNumber]);
     checkTooLow(satGHI, "satGHI");
 
     //if(thisSample->clearskyGHI < MIN_GHI_VAL)
     //    thisSample->isValid = False;
-    
+
     thisSample->groundTemp = atof(fields[9]);
-/*
-    if(thisSample->groundTemp < -40 || thisSample->groundTemp > 50) {
-        sprintf(ErrStr, "Got bad surface temperature at line %d: %.2f\n", fci->forecastLineNumber, thisSample->groundTemp);
-        FatalError("readDataFromLine()", ErrStr);
-    }
-*/
-    
+    /*
+        if(thisSample->groundTemp < -40 || thisSample->groundTemp > 50) {
+            sprintf(ErrStr, "Got bad surface temperature at line %d: %.2f\n", fci->forecastLineNumber, thisSample->groundTemp);
+            FatalError("readDataFromLine()", ErrStr);
+        }
+     */
+
     thisSample->groundWind = atof(fields[10]);
-/*
-    if(thisSample->groundWind < -90 || thisSample->groundWind > 90) {
-        sprintf(ErrStr, "Got bad surface wind at line %d: %.2f\n", fci->forecastLineNumber, thisSample->groundWind);
-        FatalError("readDataFromLine()", ErrStr);
-    }
-*/
-    
+    /*
+        if(thisSample->groundWind < -90 || thisSample->groundWind > 90) {
+            sprintf(ErrStr, "Got bad surface wind at line %d: %.2f\n", fci->forecastLineNumber, thisSample->groundWind);
+            FatalError("readDataFromLine()", ErrStr);
+        }
+     */
+
     thisSample->groundRH = atof(fields[11]);
-/*
-    if(thisSample->groundRH < -1 || thisSample->groundRH > 110) {
-        sprintf(ErrStr, "Got bad surface relative humidity at line %d: %.2f\n", fci->forecastLineNumber, thisSample->groundRH);
-        FatalError("readDataFromLine()", ErrStr);
-    }
-*/
-     
-    
+    /*
+        if(thisSample->groundRH < -1 || thisSample->groundRH > 110) {
+            sprintf(ErrStr, "Got bad surface relative humidity at line %d: %.2f\n", fci->forecastLineNumber, thisSample->groundRH);
+            FatalError("readDataFromLine()", ErrStr);
+        }
+     */
+
+
     int columnIndex, modelIndex, hoursAheadIndex;
-    for(columnIndex=fci->startModelsColumnNumber; columnIndex<fci->numColumnInfoEntries; columnIndex++) {
-        if(columnIndex >= numFields) {
+    for (columnIndex = fci->startModelsColumnNumber; columnIndex < fci->numColumnInfoEntries; columnIndex++) {
+        if (columnIndex >= numFields) {
             sprintf(ErrStr, "Input error: columnIndex %d exceeds number of fields in line, %d", columnIndex, numFields);
             FatalError("readDataFromLine()", ErrStr);
         }
         hoursAheadIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
         modelIndex = fci->columnInfo[columnIndex].modelIndex;
-/*
-        if(strcmp(fci->columnInfo[columnIndex].columnName, "ncep_HRRR_DSWRF_1") == 0)
-            printf("hi\n");
-*/
-        if(strlen(fields[fci->columnInfo[columnIndex].inputColumnNumber]) < 1) {  // no data present
+        /*
+                if(strcmp(fci->columnInfo[columnIndex].columnName, "ncep_HRRR_DSWRF_1") == 0)
+                    printf("hi\n");
+         */
+        if (strlen(fields[fci->columnInfo[columnIndex].inputColumnNumber]) < 1) { // no data present
             //fprintf(stderr, "%s line %d: input col = %d, data = %s\n", fci->columnInfo[columnIndex].columnName, fci->forecastLineNumber, fci->columnInfo[columnIndex].inputColumnNumber, fields[fci->columnInfo[columnIndex].inputColumnNumber]);
             thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] = -999;
-        }
-        else {
+        } else {
             thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] = atof(fields[fci->columnInfo[columnIndex].inputColumnNumber]);
         }
         //fprintf(stderr, "modelDesc=%s,columnInfoIndex=%d,inputCol=%d,hourInd=%d,modelIndex=%d,scanVal=%s,atofVal=%.1f\n", fci->columnInfo[columnIndex].columnName, columnIndex, fci->columnInfo[columnIndex].inputColumnNumber, 
@@ -443,107 +431,106 @@ int readDataFromLine(forecastInputType *fci, char *fields[], int numFields)
     }
 
 #ifdef DUMP_ALL_DATA
-    if(firstTime) {        
-        if(filteredDataFileName == NULL || (FilteredDataFp = fopen(filteredDataFileName, "w")) == NULL) {
+    if (firstTime) {
+        if (filteredDataFileName == NULL || (FilteredDataFp = fopen(filteredDataFileName, "w")) == NULL) {
             sprintf(ErrStr, "Couldn't open output file %s : %s", filteredDataFileName, strerror(errno));
             FatalError("readDataFromLine()", ErrStr);
         }
         //FilteredDataFp = stderr;
-        
+
         fprintf(FilteredDataFp, "#year,month,day,hour,minute,zenith,groundGHI,groundDNI,groundDiffuse,clearskyGHI");
-        for(columnIndex=fci->startModelsColumnNumber; columnIndex<fci->numColumnInfoEntries; columnIndex++) {
-                fprintf(FilteredDataFp, ",%s", fci->columnInfo[columnIndex].columnName);
+        for (columnIndex = fci->startModelsColumnNumber; columnIndex < fci->numColumnInfoEntries; columnIndex++) {
+            fprintf(FilteredDataFp, ",%s", fci->columnInfo[columnIndex].columnName);
         }
         fprintf(FilteredDataFp, "\n");
         firstTime = False;
     }
 #endif
-    
+
 #ifdef DUMP_ALL_DATA
-        fprintf(FilteredDataFp, "%s,%.2f,%.0f,%.0f,%.0f,%.0f", dtToStringCsv2(&thisSample->dateTime), thisSample->zenith, thisSample->groundGHI, thisSample->groundDNI, thisSample->groundDiffuse, thisSample->clearskyGHI);
-        for(columnIndex=fci->startModelsColumnNumber; columnIndex<fci->numColumnInfoEntries; columnIndex++) {        
-            hoursAheadIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
-            modelIndex = fci->columnInfo[columnIndex].modelIndex;
-            fprintf(FilteredDataFp, ",%.1f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
+    fprintf(FilteredDataFp, "%s,%.2f,%.0f,%.0f,%.0f,%.0f", dtToStringCsv2(&thisSample->dateTime), thisSample->zenith, thisSample->groundGHI, thisSample->groundDNI, thisSample->groundDiffuse, thisSample->clearskyGHI);
+    for (columnIndex = fci->startModelsColumnNumber; columnIndex < fci->numColumnInfoEntries; columnIndex++) {
+        hoursAheadIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
+        modelIndex = fci->columnInfo[columnIndex].modelIndex;
+        fprintf(FilteredDataFp, ",%.1f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
     }
     fprintf(FilteredDataFp, "\n");
 #endif
-    
+
     return True;
 }
 
 // review the input data for holes
-void studyData(forecastInputType *fci)
-{
+
+void studyData(forecastInputType *fci) {
     timeSeriesType *thisSample;
     modelStatsType *thisModelErr;
-    int i, columnIndex, modelIndex, hoursAheadIndex, daylightData=0;
-    
-    for(i=0; i<fci->numTotalSamples; i++) {
+    int i, columnIndex, modelIndex, hoursAheadIndex, daylightData = 0;
+
+    for (i = 0; i < fci->numTotalSamples; i++) {
         thisSample = &(fci->timeSeries[i]);
-        if(thisSample->sunIsUp) {
-            for(columnIndex=fci->startModelsColumnNumber; columnIndex<fci->numColumnInfoEntries; columnIndex++) {            
-                    daylightData++;
-                    hoursAheadIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
-                    modelIndex = fci->columnInfo[columnIndex].modelIndex;
-                    thisModelErr = &fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex];
+        if (thisSample->sunIsUp) {
+            for (columnIndex = fci->startModelsColumnNumber; columnIndex < fci->numColumnInfoEntries; columnIndex++) {
+                daylightData++;
+                hoursAheadIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
+                modelIndex = fci->columnInfo[columnIndex].modelIndex;
+                thisModelErr = &fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex];
 
-                    if(thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] == -999) {
-                        fci->columnInfo[columnIndex].numMissing++;
-                    }
-                    else {
-                        fci->columnInfo[columnIndex].numGood++;
-                    }
-                }
-        }
-    }
-    
-    if(daylightData < 1) {
-        FatalError("studyData()", "Got no daylight data scanning input.");
-    }
-    
-    fprintf(fci->warningsFile.fp, "======== Scanning Forecast Data For Active Models =========\n");
-    for(columnIndex=fci->startModelsColumnNumber; columnIndex<fci->numColumnInfoEntries; columnIndex++) { 
-        hoursAheadIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
-        modelIndex = fci->columnInfo[columnIndex].modelIndex;
-/*
-        if(fci->columnInfo[columnIndex].numGood < 1)
-            fci->columnInfo[columnIndex].percentMissing = 100;
-        else
-*/
-            fci->columnInfo[columnIndex].percentMissing = fci->columnInfo[columnIndex].numMissing/(fci->columnInfo[columnIndex].numMissing + fci->columnInfo[columnIndex].numGood) * 100.0;
-
-            if(fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive) {  // hasn't been disabled yet
-                if(fci->columnInfo[columnIndex].percentMissing < 100 && fci->columnInfo[columnIndex].percentMissing > 0) {
-                    fprintf(stderr, "Warning: %s is neither completely on nor off in the input forecast data (%.0f%% missing)\n", fci->columnInfo[columnIndex].columnName, fci->columnInfo[columnIndex].percentMissing);
-                }
-                // deactivate this model on account of too much missing data
-                if(fci->columnInfo[columnIndex].percentMissing > 90) {
-                    fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive = False;
-                    fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].tooMuchDataMissing = True;
-                    fprintf(fci->warningsFile.fp, "%35s : off\n", fci->columnInfo[columnIndex].columnName); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
-                    fprintf(fci->warningsFile.fp, "WARNING: disabling model '%s' : %.0f%% data missing : model index = %d hour index = %d\n", fci->columnInfo[columnIndex].columnName, fci->columnInfo[columnIndex].percentMissing, modelIndex, hoursAheadIndex); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
-                    fprintf(stderr,               "WARNING: disabling model '%s' : %.0f%% data missing : model index = %d hour index = %d\n", fci->columnInfo[columnIndex].columnName, fci->columnInfo[columnIndex].percentMissing, modelIndex, hoursAheadIndex); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
-                }
-                else {
-                    fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive = True;
-                    fprintf(fci->warningsFile.fp, "%35s : on\n", fci->columnInfo[columnIndex].columnName); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
+                if (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] == -999) {
+                    fci->columnInfo[columnIndex].numMissing++;
+                } else {
+                    fci->columnInfo[columnIndex].numGood++;
                 }
             }
-            
-            // use isContributingModel (in optimization stage) to signify isActive and not isReference forecast model (such as persistence)
-/*
-            fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isContributingModel = 
-                    fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive 
-                    && !fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isReference;
-*/
+        }
+    }
+
+    if (daylightData < 1) {
+        FatalError("studyData()", "Got no daylight data scanning input.");
+    }
+
+    fprintf(fci->warningsFile.fp, "======== Scanning Forecast Data For Active Models =========\n");
+    for (columnIndex = fci->startModelsColumnNumber; columnIndex < fci->numColumnInfoEntries; columnIndex++) {
+        hoursAheadIndex = fci->columnInfo[columnIndex].hoursAheadIndex;
+        modelIndex = fci->columnInfo[columnIndex].modelIndex;
+        /*
+                if(fci->columnInfo[columnIndex].numGood < 1)
+                    fci->columnInfo[columnIndex].percentMissing = 100;
+                else
+         */
+        fci->columnInfo[columnIndex].percentMissing = fci->columnInfo[columnIndex].numMissing / (fci->columnInfo[columnIndex].numMissing + fci->columnInfo[columnIndex].numGood) * 100.0;
+
+        if (fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive) { // hasn't been disabled yet
+            if (fci->columnInfo[columnIndex].percentMissing < 100 && fci->columnInfo[columnIndex].percentMissing > 0) {
+                fprintf(stderr, "Warning: %s is neither completely on nor off in the input forecast data (%.0f%% missing)\n", fci->columnInfo[columnIndex].columnName, fci->columnInfo[columnIndex].percentMissing);
+            }
+            // deactivate this model on account of too much missing data
+            if (fci->columnInfo[columnIndex].percentMissing > 90) {
+                fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive = False;
+                fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].tooMuchDataMissing = True;
+                fprintf(fci->warningsFile.fp, "%35s : off\n", fci->columnInfo[columnIndex].columnName); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
+                fprintf(fci->warningsFile.fp, "WARNING: disabling model '%s' : %.0f%% data missing : model index = %d hour index = %d\n", fci->columnInfo[columnIndex].columnName, fci->columnInfo[columnIndex].percentMissing, modelIndex, hoursAheadIndex); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
+                fprintf(stderr, "WARNING: disabling model '%s' : %.0f%% data missing : model index = %d hour index = %d\n", fci->columnInfo[columnIndex].columnName, fci->columnInfo[columnIndex].percentMissing, modelIndex, hoursAheadIndex); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
+            } else {
+                fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive = True;
+                fprintf(fci->warningsFile.fp, "%35s : on\n", fci->columnInfo[columnIndex].columnName); //, hoursAheadIndex = %d\n", fci->columnInfo[columnIndex].columnName, modelIndex, hoursAheadIndex);
+            }
+        }
+
+        // use isContributingModel (in optimization stage) to signify isActive and not isReference forecast model (such as persistence)
+        /*
+                    fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isContributingModel = 
+                            fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isActive 
+                            && !fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isReference;
+         */
 
         //fprintf(stderr, "%s : column index = %d : model index = %d : hour index = %d : missing = %.0f%%\n", fci->columnInfo[columnIndex].columnName, columnIndex, fci->columnInfo[columnIndex].modelIndex, fci->columnInfo[columnIndex].hoursAheadIndex, fci->columnInfo[columnIndex].percentMissing);
-        
+
         // disable models if percentMissing < threshold
     }
-    fprintf(fci->warningsFile.fp, "===========================================================\n");   
+    fprintf(fci->warningsFile.fp, "===========================================================\n");
 }
+
 /*
  
  Potential columns of interest
@@ -595,14 +582,13 @@ cm_1                                    Cloud motion GHI
 ecmwf_flag_1                            ECMWF grab flag		
 ecmwf_cloud_1                           ECMWF total cloud
 ecmwf_ghi_1                             ECMWF average GHI		
-*/
+ */
 
 
-void initForecastInfo(forecastInputType *fci)
-{
+void initForecastInfo(forecastInputType *fci) {
     int i;
     size_t size;
-    
+
     fci->delimiter = "\t";
     fci->startDate.year = -1;
     fci->endDate.year = -1;
@@ -633,8 +619,8 @@ void initForecastInfo(forecastInputType *fci)
     fci->maxModelIndex = 0;
     fci->numTotalSamples = 0;
     allocatedSamples = 8670 * MAX_MODELS;
-    size = allocatedSamples * sizeof(timeSeriesType);
-    if((fci->timeSeries = (timeSeriesType *) malloc(size)) == NULL) {
+    size = allocatedSamples * sizeof (timeSeriesType);
+    if ((fci->timeSeries = (timeSeriesType *) malloc(size)) == NULL) {
         FatalError("initForecastInfo()", "memory alloc error");
     }
     fci->numColumnInfoEntries = 0;
@@ -643,10 +629,10 @@ void initForecastInfo(forecastInputType *fci)
     fci->doModelPermutations = True;
     fci->modelMixDirectory = "modelMixes";
 
-    for(i=0; i<MAX_HOURS_AHEAD; i++) {
-        fci->hoursAheadGroup[i].hoursAhead = -1;       
+    for (i = 0; i < MAX_HOURS_AHEAD; i++) {
+        fci->hoursAheadGroup[i].hoursAhead = -1;
     }
-    
+
     fci->descriptionFile.fileName = NULL;
     fci->warningsFile.fileName = NULL;
     fci->weightTableFile.fileName = NULL;
@@ -658,147 +644,143 @@ void initForecastInfo(forecastInputType *fci)
     fci->modelMixFileOutput.fp = NULL;
     fci->modelMixFileInput.fp = NULL;
     fci->correctionStatsFile.fp = NULL;
-    
+
     fci->modelPermutations.numPermutations = 0;
 }
 
-void incrementTimeSeries(forecastInputType *fci)
-{
+void incrementTimeSeries(forecastInputType *fci) {
     fci->numTotalSamples++;
-    if(fci->numTotalSamples == allocatedSamples) {
+    if (fci->numTotalSamples == allocatedSamples) {
         allocatedSamples *= 2;
-        fci->timeSeries = (timeSeriesType *) realloc(fci->timeSeries, allocatedSamples * sizeof(timeSeriesType));
+        fci->timeSeries = (timeSeriesType *) realloc(fci->timeSeries, allocatedSamples * sizeof (timeSeriesType));
     }
 }
 
-void scanHeaderLine(forecastInputType *fci)
-{
+void scanHeaderLine(forecastInputType *fci) {
     //fci->maxModelIndex = 15;       
-/*
-[adk2]:/home/jim/mom> head -2 test-data-4-jim-desert-rock.2.csv | tail -1 | sed -e 's/,/\n/g' | grep ncep_NAM_hires_DSWRF_inst_
-ncep_NAM_hires_DSWRF_inst_1
-ncep_NAM_hires_DSWRF_inst_2
-ncep_NAM_hires_DSWRF_inst_3
-ncep_NAM_hires_DSWRF_inst_4
-ncep_NAM_hires_DSWRF_inst_5
-ncep_NAM_hires_DSWRF_inst_6
-ncep_NAM_hires_DSWRF_inst_7
-ncep_NAM_hires_DSWRF_inst_8
-ncep_NAM_hires_DSWRF_inst_9
-ncep_NAM_hires_DSWRF_inst_12
-ncep_NAM_hires_DSWRF_inst_15
-ncep_NAM_hires_DSWRF_inst_18
-ncep_NAM_hires_DSWRF_inst_21
-ncep_NAM_hires_DSWRF_inst_24
-ncep_NAM_hires_DSWRF_inst_30
-*/    
+    /*
+    [adk2]:/home/jim/mom> head -2 test-data-4-jim-desert-rock.2.csv | tail -1 | sed -e 's/,/\n/g' | grep ncep_NAM_hires_DSWRF_inst_
+    ncep_NAM_hires_DSWRF_inst_1
+    ncep_NAM_hires_DSWRF_inst_2
+    ncep_NAM_hires_DSWRF_inst_3
+    ncep_NAM_hires_DSWRF_inst_4
+    ncep_NAM_hires_DSWRF_inst_5
+    ncep_NAM_hires_DSWRF_inst_6
+    ncep_NAM_hires_DSWRF_inst_7
+    ncep_NAM_hires_DSWRF_inst_8
+    ncep_NAM_hires_DSWRF_inst_9
+    ncep_NAM_hires_DSWRF_inst_12
+    ncep_NAM_hires_DSWRF_inst_15
+    ncep_NAM_hires_DSWRF_inst_18
+    ncep_NAM_hires_DSWRF_inst_21
+    ncep_NAM_hires_DSWRF_inst_24
+    ncep_NAM_hires_DSWRF_inst_30
+     */
     // ground and satellite data columns
     fci->zenithCol = fci->numColumnInfoEntries;
     registerColumnInfo(fci, "sr_zen", "zenith angle", IsNotReference, IsNotForecast, 0);
     fci->groundGHICol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "sr_global", "ground GHI", IsReference, IsNotForecast, 0);   
+    registerColumnInfo(fci, "sr_global", "ground GHI", IsReference, IsNotForecast, 0);
     fci->groundDNICol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "sr_direct", "ground DNI", IsNotReference, IsNotForecast, 0);   
+    registerColumnInfo(fci, "sr_direct", "ground DNI", IsNotReference, IsNotForecast, 0);
     fci->groundDiffuseCol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "sr_diffuse", "ground diffuse", IsNotReference, IsNotForecast, 0);   
+    registerColumnInfo(fci, "sr_diffuse", "ground diffuse", IsNotReference, IsNotForecast, 0);
     fci->satGHICol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "sat_ghi", "sat model GHI", IsReference, IsNotForecast, 0);   
+    registerColumnInfo(fci, "sat_ghi", "sat model GHI", IsReference, IsNotForecast, 0);
     fci->clearskyGHICol = fci->numColumnInfoEntries;
-    registerColumnInfo(fci, "clear_ghi", "clearsky GHI", IsNotReference, IsNotForecast, 0);  
-    
+    registerColumnInfo(fci, "clear_ghi", "clearsky GHI", IsNotReference, IsNotForecast, 0);
+
     fci->startModelsColumnNumber = fci->numColumnInfoEntries;
 
-    if((fci->descriptionFile.fp = fopen(fci->descriptionFile.fileName, "r")) == NULL) {
+    if ((fci->descriptionFile.fp = fopen(fci->descriptionFile.fileName, "r")) == NULL) {
         sprintf(ErrStr, "Couldn't open model description file %s : %s", fci->descriptionFile.fileName, strerror(errno));
         FatalError("scanHeaderLine()", ErrStr);
     }
 
     fci->numModels = 0;
-    
-    
+
+
     //
     // Now we open up the models description (config) file
     //
-    
+
     char line[LINE_LENGTH], saveLine[LINE_LENGTH];
     char *fields[MAX_FIELDS], *modelName, *modelDesc;
-    int i, numFields, isReference, maxHoursAhead, hoursAheadColMap[64],thisHour;
+    int i, numFields, isReference, maxHoursAhead, hoursAheadColMap[64], thisHour;
     double weight;
-    int modelStartColumn = 3; 
-            
+    int modelStartColumn = 3;
+
     fci->descriptionFile.lineNumber = 0;
-    
+
     // Need to find a way to generate this file too
-    while(fgets(line, LINE_LENGTH, fci->descriptionFile.fp)) {
+    while (fgets(line, LINE_LENGTH, fci->descriptionFile.fp)) {
         fci->descriptionFile.lineNumber++;
         //fprintf(stderr, "line %d:%s\n", fci->descriptionFile.lineNumber, line);
-        if(fci->descriptionFile.lineNumber == 1)  // this is just an informational line
+        if (fci->descriptionFile.lineNumber == 1) // this is just an informational line
             continue;
-        if(fci->descriptionFile.lineNumber == 2) {  // this is the header line with (possibly) hours ahead info in it
-                strcpy(saveLine, line);
-                // #Model description file for forecastOpt
-                // #modelName           modelDesc                       isReferenceModel	HA_1 weights	HA_2 weights	HA_12 weights
-                // ncep_NAM_DSWRF_	 "NAM Low Res Instant GHI"	 0                      0.1             0.2             0.1
-                numFields = split(line, fields, MAX_FIELDS, ",\t");  /* split line */
-                if(numFields > modelStartColumn) {
-                    fci->runOptimizer = False;  // we want to use a weighting scheme that's been provided
-                    for(i=3; i<numFields; i++) {
-                        hoursAheadColMap[i] = parseNumberFromString(fields[i]);  // HA_1 weights => 1
-                        if(hoursAheadColMap[i] < 1 || hoursAheadColMap[i] > MAX_HOURS_AHEAD) {
-                            sprintf(ErrStr, "Something's fishy about header line %d in %s: can't parse hours ahead number out of column %d in header line.\nline = %s\n",
-                                    fci->descriptionFile.lineNumber, fci->descriptionFile.fileName, i+1, saveLine);
-                            FatalError("scanHeaderLine()", ErrStr);
-                        }
+        if (fci->descriptionFile.lineNumber == 2) { // this is the header line with (possibly) hours ahead info in it
+            strcpy(saveLine, line);
+            // #Model description file for forecastOpt
+            // #modelName           modelDesc                       isReferenceModel	HA_1 weights	HA_2 weights	HA_12 weights
+            // ncep_NAM_DSWRF_	 "NAM Low Res Instant GHI"	 0                      0.1             0.2             0.1
+            numFields = split(line, fields, MAX_FIELDS, ",\t"); /* split line */
+            if (numFields > modelStartColumn) {
+                fci->runOptimizer = False; // we want to use a weighting scheme that's been provided
+                for (i = 3; i < numFields; i++) {
+                    hoursAheadColMap[i] = parseNumberFromString(fields[i]); // HA_1 weights => 1
+                    if (hoursAheadColMap[i] < 1 || hoursAheadColMap[i] > MAX_HOURS_AHEAD) {
+                        sprintf(ErrStr, "Something's fishy about header line %d in %s: can't parse hours ahead number out of column %d in header line.\nline = %s\n",
+                                fci->descriptionFile.lineNumber, fci->descriptionFile.fileName, i + 1, saveLine);
+                        FatalError("scanHeaderLine()", ErrStr);
                     }
                 }
-                else
-                    fci->runOptimizer = True; // only model names, desc, isRef were provided -- fire up the optimizer
-        }
-        else {
+            } else
+                fci->runOptimizer = True; // only model names, desc, isRef were provided -- fire up the optimizer
+        } else {
             maxHoursAhead = isReference = 0;
-            
+
             stripComment(line);
             // split by space then by =
-            numFields = split(line, fields, MAX_FIELDS, ",");  /* split line */
-            if(numFields == 0)
+            numFields = split(line, fields, MAX_FIELDS, ","); /* split line */
+            if (numFields == 0)
                 continue;
-            if((modelName = stripQuotes(fields[0])) == NULL )
+            if ((modelName = stripQuotes(fields[0])) == NULL)
                 FatalError("scanHeaderLine()", ErrStr);
-            if((modelDesc = stripQuotes(fields[1])) == NULL) 
+            if ((modelDesc = stripQuotes(fields[1])) == NULL)
                 FatalError("scanHeaderLine()", ErrStr);
             isReference = atoi(fields[2]);
-            if(numFields > 3)
+            if (numFields > 3)
                 maxHoursAhead = atoi(fields[3]);
-            
-            registerColumnInfo(fci, modelName, modelDesc, isReference, IsForecast, maxHoursAhead);    // register this model as one we want to use
+
+            registerColumnInfo(fci, modelName, modelDesc, isReference, IsForecast, maxHoursAhead); // register this model as one we want to use
             fci->numModels++;
-            if(!isReference)
+            if (!isReference)
                 fci->numContribModels++;
-            
-            if(numFields > 1000) {
-                    for(i=modelStartColumn; i<numFields; i++) {
-                        thisHour = hoursAheadColMap[i];
-                        if(thisHour < 1 || thisHour > 500) {
-                            sprintf(ErrStr, "Internal error keeping track of current hour ahead while parsing model config file %s, line %d: hours ahead for column %d = %d",
-                                    fci->descriptionFile.fileName, fci->descriptionFile.lineNumber, i+1, thisHour);
-                            FatalError("scanHeaderLine()", ErrStr);
-                        }
-                        weight = atof(fields[i]);
-                        if(weight < -0.5 || weight > 1.5) {
-                            sprintf(ErrStr, "Bad weight while parsing model config file %s, line %d: hours ahead for column %d, weight = %f", 
-                                    fci->descriptionFile.fileName, fci->descriptionFile.lineNumber, i+1, weight);
-                            FatalError("scanHeaderLine()", ErrStr);                           
-                        }
-                        // now we need to set the weight and isContributingModel flags for the current modelIndex and hoursAheadIndex
-                        // but this is best done when we're finished reading in the forecast table
-                        //fci->hoursAheadGroup[i].hourlyModelStats[modelIndex].optimizedWeightPhase2 = weight;
-                        
-                    }                
+
+            if (numFields > 1000) {
+                for (i = modelStartColumn; i < numFields; i++) {
+                    thisHour = hoursAheadColMap[i];
+                    if (thisHour < 1 || thisHour > 500) {
+                        sprintf(ErrStr, "Internal error keeping track of current hour ahead while parsing model config file %s, line %d: hours ahead for column %d = %d",
+                                fci->descriptionFile.fileName, fci->descriptionFile.lineNumber, i + 1, thisHour);
+                        FatalError("scanHeaderLine()", ErrStr);
+                    }
+                    weight = atof(fields[i]);
+                    if (weight < -0.5 || weight > 1.5) {
+                        sprintf(ErrStr, "Bad weight while parsing model config file %s, line %d: hours ahead for column %d, weight = %f",
+                                fci->descriptionFile.fileName, fci->descriptionFile.lineNumber, i + 1, weight);
+                        FatalError("scanHeaderLine()", ErrStr);
+                    }
+                    // now we need to set the weight and isContributingModel flags for the current modelIndex and hoursAheadIndex
+                    // but this is best done when we're finished reading in the forecast table
+                    //fci->hoursAheadGroup[i].hourlyModelStats[modelIndex].optimizedWeightPhase2 = weight;
+
+                }
             }
         }
     }
 
-    if(fci->startHourLowIndex == -1) {
+    if (fci->startHourLowIndex == -1) {
         fci->startHourLowIndex = 0;
         fci->startHourHighIndex = fci->maxModelIndex;
     }
@@ -807,42 +789,40 @@ ncep_NAM_hires_DSWRF_inst_30
     fci->gotConfigFile = True;
 }
 
-char *stripQuotes(char *str)
-{
-    char *q=NULL, *p = str;
+char *stripQuotes(char *str) {
+    char *q = NULL, *p = str;
     char origStr[1024];
     int firstQuote = 1;
-    
+
     strcpy(origStr, str);
-    while(*p != '\0') {
-        if(*p == '"' || *p == '\'') {
-            if(firstQuote) {
-                q = p+1;
+    while (*p != '\0') {
+        if (*p == '"' || *p == '\'') {
+            if (firstQuote) {
+                q = p + 1;
                 firstQuote = 0;
-            }
-            else {
+            } else {
                 *p = '\0';
                 return q;
             }
         }
         p++;
     }
-    
-    if(!firstQuote) {
+
+    if (!firstQuote) {
         sprintf(ErrStr, "got unterminated quote string: %s", origStr);
         return NULL;
     }
-    
+
     return str;
 }
 
 // Everything after the '#' gets stripped out
-void stripComment(char *str)
-{
+
+void stripComment(char *str) {
     char *p = str;
 
-    while(*p) {
-        if(*p == '#') {
+    while (*p) {
+        if (*p == '#') {
             *p = '\0';
             return;
         }
@@ -852,83 +832,79 @@ void stripComment(char *str)
 
 // look for positive integers in a string
 // only returns the first one found
-int parseNumberFromString(char *str)
-{
-    char *q=NULL, *p = str;
+
+int parseNumberFromString(char *str) {
+    char *q = NULL, *p = str;
     char origStr[1024], inNumber = 0;
-    
+
     // HA_12 weights
     strcpy(origStr, str);
-    while(*p != '\0') {
-        if(isdigit(*p)) {
-            if(!inNumber) {
+    while (*p != '\0') {
+        if (isdigit(*p)) {
+            if (!inNumber) {
                 q = p;
                 inNumber = 1;
             }
             // otherwise just continue along
-        }
-        else if(inNumber) {
+        } else if (inNumber) {
             *p = '\0';
             break;
         }
         p++;
     }
-    
-    if(inNumber)
+
+    if (inNumber)
         return atoi(q);
-    
+
     //sprintf(ErrStr, "couldn't find number in string: %s", origStr);
     return -1;
 }
 
-
-void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int isReference, int isForecast, int maxHoursAhead) 
-{
+void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDescription, int isReference, int isForecast, int maxHoursAhead) {
     // We want to search the forecastHeaderLine for columnName and see how far out it goes
     // note that just because a measurement goes out to N hours ahead doesn't guarantee that there's 
     // good data out there.  This may be a sticky issue.
-    static int numFields=-1, numGotModels=0;
+    static int numFields = -1, numGotModels = 0;
     static char *fields[MAX_FIELDS];
-    int i, hoursAhead, hoursAheadIndex=-1;
-    char tempColDesc[1024], tempHeader[MAX_FIELDS * 64], *p;    
+    int i, hoursAhead, hoursAheadIndex = -1;
+    char tempColDesc[1024], tempHeader[MAX_FIELDS * 64], *p;
 
-    if(numFields == -1) {
+    if (numFields == -1) {
         strcpy(tempHeader, fci->forecastHeaderLine);
-        numFields = split(tempHeader, fields, MAX_FIELDS, fci->delimiter);  /* split line just once */   
+        numFields = split(tempHeader, fields, MAX_FIELDS, fci->delimiter); /* split line just once */
     }
 
-    if(isForecast) {
-        for(i=0; i<numFields; i++) {
-            if(strncasecmp(fields[i], columnName, strlen(columnName)) == 0) { /* got a hit */
+    if (isForecast) {
+        for (i = 0; i < numFields; i++) {
+            if (strncasecmp(fields[i], columnName, strlen(columnName)) == 0) { /* got a hit */
                 p = fields[i] + strlen(fields[i]) - 1;
-                while(*p != '_' && p > fields[i]) p--;
+                while (*p != '_' && p > fields[i]) p--;
                 p++;
                 hoursAhead = atoi(p);
                 hoursAheadIndex++;
-                fci->columnInfo[fci->numColumnInfoEntries].hoursAheadIndex = hoursAheadIndex;   
+                fci->columnInfo[fci->numColumnInfoEntries].hoursAheadIndex = hoursAheadIndex;
                 fci->columnInfo[fci->numColumnInfoEntries].modelIndex = fci->numModels;
                 sprintf(tempColDesc, "%s +%d hours", columnDescription, hoursAhead); //fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
                 fci->columnInfo[fci->numColumnInfoEntries].columnName = strdup(fields[i]); //"ncep_RAP_DSWRF_1";  
-/*
-                if(strstr(fci->columnInfo[fci->numColumnInfoEntries].columnName, "HRRR") != NULL) {
-                    fci->doHrrrGhiRecalc = True;
+                /*
+                                if(strstr(fci->columnInfo[fci->numColumnInfoEntries].columnName, "HRRR") != NULL) {
+                                    fci->doHrrrGhiRecalc = True;
                     
-                }
-*/
+                                }
+                 */
                 fci->columnInfo[fci->numColumnInfoEntries].columnDescription = strdup(tempColDesc); //"NCEP RAP GHI";  
-                fci->columnInfo[fci->numColumnInfoEntries].maxhoursAhead = maxHoursAhead <= 0 ? hoursAhead : MIN(hoursAhead, maxHoursAhead);  // this will keep increasing
-                fci->columnInfo[fci->numColumnInfoEntries].inputColumnNumber = i;  // this tells us the column numner of the input forecast table
-                
-                if(fci->hoursAheadGroup[hoursAheadIndex].hoursAhead != -1) {
-                    if(fci->hoursAheadGroup[hoursAheadIndex].hoursAhead != hoursAhead) {
-                        sprintf(ErrStr, "found inconsistency in number of hours ahead: for hours ahead index %d: it changed from %d hours to %d hours\ncolumnName=%s\ncolumnDesc=%s,maxHoursAhead=%d", 
-                                hoursAheadIndex, fci->hoursAheadGroup[hoursAheadIndex].hoursAhead, hoursAhead,columnName, columnDescription, maxHoursAhead);
+                fci->columnInfo[fci->numColumnInfoEntries].maxhoursAhead = maxHoursAhead <= 0 ? hoursAhead : MIN(hoursAhead, maxHoursAhead); // this will keep increasing
+                fci->columnInfo[fci->numColumnInfoEntries].inputColumnNumber = i; // this tells us the column numner of the input forecast table
+
+                if (fci->hoursAheadGroup[hoursAheadIndex].hoursAhead != -1) {
+                    if (fci->hoursAheadGroup[hoursAheadIndex].hoursAhead != hoursAhead) {
+                        sprintf(ErrStr, "found inconsistency in number of hours ahead: for hours ahead index %d: it changed from %d hours to %d hours\ncolumnName=%s\ncolumnDesc=%s,maxHoursAhead=%d",
+                                hoursAheadIndex, fci->hoursAheadGroup[hoursAheadIndex].hoursAhead, hoursAhead, columnName, columnDescription, maxHoursAhead);
                         FatalError("registerColumnInfo()", ErrStr);
                     }
-                }
-                else
+                } else
                     fci->hoursAheadGroup[hoursAheadIndex].hoursAhead = hoursAhead;
-                
+
                 // make hourErrorGroup links
                 // turn off isActive if this HA is > than that specified in config file
                 fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].isActive = (maxHoursAhead <= 0 || hoursAhead <= maxHoursAhead);
@@ -936,7 +912,7 @@ void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDe
                 fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].tooMuchDataMissing = False;
                 fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].columnInfoIndex = fci->numColumnInfoEntries;
                 fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].columnName = fci->columnInfo[fci->numColumnInfoEntries].columnName;
-                fci->maxModelIndex = MAX(fci->maxModelIndex, hoursAheadIndex);  // the max hoursAheadIndex is the number of hour groups
+                fci->maxModelIndex = MAX(fci->maxModelIndex, hoursAheadIndex); // the max hoursAheadIndex is the number of hour groups
                 /*
                 fprintf(stderr, "[%d] registering %s, data col index = %d, input col = %d, hour index = %d,", fci->numModels, fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].columnName,
                         fci->numColumnInfoEntries-1, i, hoursAheadIndex);
@@ -944,82 +920,78 @@ void registerColumnInfo(forecastInputType *fci, char *columnName, char *columnDe
                         fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].isActive,
                         fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[fci->numModels].isReference,
                         fci->columnInfo[fci->numColumnInfoEntries].maxhoursAhead);
-                */
+                 */
                 numGotModels++;
                 fci->numColumnInfoEntries++;
-            } 
+            }
         }
-        if(i == numFields && numGotModels == 0) {
+        if (i == numFields && numGotModels == 0) {
             sprintf(ErrStr, "model name %s not found in header line", columnName);
             FatalError("registerColumnInfo()", ErrStr);
         }
     }
-
-    // not a forecast but we still need to set a few things
+        // not a forecast but we still need to set a few things
     else {
-        for(i=0; i<numFields; i++) {
-            if(strncasecmp(fields[i], columnName, strlen(columnName)) == 0) { /* got a hit */
+        for (i = 0; i < numFields; i++) {
+            if (strncasecmp(fields[i], columnName, strlen(columnName)) == 0) { /* got a hit */
                 numGotModels = 1;
                 fci->columnInfo[fci->numColumnInfoEntries].columnName = strdup(columnName); // ;                      
                 fci->columnInfo[fci->numColumnInfoEntries].columnDescription = strdup(columnDescription); //"NCEP RAP GHI";  
                 fci->columnInfo[fci->numColumnInfoEntries].maxhoursAhead = 0;
-                fci->columnInfo[fci->numColumnInfoEntries].hoursAheadIndex = -1;  
+                fci->columnInfo[fci->numColumnInfoEntries].hoursAheadIndex = -1;
                 fci->columnInfo[fci->numColumnInfoEntries].modelIndex = -1;
-                fci->columnInfo[fci->numColumnInfoEntries].inputColumnNumber = i;  // this tells us the column numner of the input forecast table
-/*
-                fci->hoursAheadGroup[0].hourlyModelStats[fci->numModels].isReference = isReference;
-                fci->hoursAheadGroup[0].hourlyModelStats[fci->numModels].columnInfoIndex = fci->numColumnInfoEntries;
-                fci->hoursAheadGroup[0].hourlyModelStats[fci->numModels].columnName = fci->columnInfo[fci->numColumnInfoEntries].columnName;
-*/
+                fci->columnInfo[fci->numColumnInfoEntries].inputColumnNumber = i; // this tells us the column numner of the input forecast table
+                /*
+                                fci->hoursAheadGroup[0].hourlyModelStats[fci->numModels].isReference = isReference;
+                                fci->hoursAheadGroup[0].hourlyModelStats[fci->numModels].columnInfoIndex = fci->numColumnInfoEntries;
+                                fci->hoursAheadGroup[0].hourlyModelStats[fci->numModels].columnName = fci->columnInfo[fci->numColumnInfoEntries].columnName;
+                 */
                 fci->numColumnInfoEntries++;
                 //fprintf(stderr, "registering non-model %s, data index = %d, hour index = %d, input col = %d\n", fields[i], fci->numColumnInfoEntries-1, hoursAheadIndex, i);
             }
         }
-        if(i == numFields && numGotModels == 0) {
+        if (i == numFields && numGotModels == 0) {
             sprintf(ErrStr, "measuremnet name %s not found in header line", columnName);
             FatalError("registerColumnInfo()", ErrStr);
         }
     }
 }
 
-int checkModelAgainstSite(forecastInputType *fci, char *modelName)
-{
+int checkModelAgainstSite(forecastInputType *fci, char *modelName) {
     int modelNum;
-    
+
     //fprintf(stderr, "checking %s: number of models = %d\n", modelName, fci->thisSite->numModels);
 
-    for(modelNum=0; modelNum<fci->thisSite->numModels; modelNum++) {
+    for (modelNum = 0; modelNum < fci->thisSite->numModels; modelNum++) {
         //fprintf(stderr, "checking %s against %s\n", modelName, fci->thisSite->modelNames[modelNum]);
-        if(strcmp(modelName, fci->thisSite->modelNames[modelNum]) == 0) {
+        if (strcmp(modelName, fci->thisSite->modelNames[modelNum]) == 0) {
             return True;
         }
-    } 
-    
+    }
+
     fprintf(stderr, "Note: model %s not turned on for site %s\n", modelName, fci->siteName);
     return False;
 }
 
-void registerSiteModel(siteType *si, char *modelName, int maxHoursAhead)
-{
+void registerSiteModel(siteType *si, char *modelName, int maxHoursAhead) {
     si->modelNames[si->numModels] = strdup(modelName);
     si->maxHoursAhead[si->numModels] = maxHoursAhead;
     si->numModels++;
 }
 
-void dumpHoursAfterSunrise(forecastInputType *fci)
-{
+void dumpHoursAfterSunrise(forecastInputType *fci) {
     int hoursAheadIndex, hoursAfterSunriseIndex;
     modelRunType *modelRun;
-    
+
     // print header
     fprintf(stderr, "\n\n#hours ahead");
-    for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) 
-        fprintf(stderr, "\tHAS=%02d", hoursAfterSunriseIndex+1);
+    for (hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++)
+        fprintf(stderr, "\tHAS=%02d", hoursAfterSunriseIndex + 1);
     fprintf(stderr, "\n");
-    
-    for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
+
+    for (hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
         fprintf(stderr, "%d", fci->hoursAfterSunriseGroup[hoursAheadIndex][0].hoursAhead);
-        for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+        for (hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
             modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
             fprintf(stderr, "\t%.1f", modelRun->optimizedRMSEphase2 * 100);
         }
@@ -1027,8 +999,7 @@ void dumpHoursAfterSunrise(forecastInputType *fci)
     }
 }
 
-void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci)
-{
+void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci) {
     //    for each model
     // +------ HAS -----
     // | %mix, %mix
@@ -1036,7 +1007,7 @@ void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci)
     // A
     // |
     // |
-    
+
     FILE *fp;
     char fileName[1024];
     char outBuff[1024 * 1024];
@@ -1045,36 +1016,36 @@ void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci)
     //int hoursAhead, hoursAfterSunrise;
     modelRunType *modelRun;
     modelStatsType *err;
-         
-    if(fci->verbose) 
+
+    if (fci->verbose)
         fprintf(stderr, "\nGenerating model mix percentage files by model...\n");
-    
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        buffPtr = outBuff;  // reset memory buffer
+
+    for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+        buffPtr = outBuff; // reset memory buffer
         emptyOutput = True;
 
         // print header
         buffPtr += sprintf(buffPtr, "#For model %s: model percent by hours ahead (HA) and hours after sunrise (HAS)\n#siteName=%s,lat=%.2f,lon=%.3f,date span=%s-%s\n#HA,",
                 getGenericModelName(fci, modelIndex), genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, fci->startDateStr, fci->endDateStr);
-        for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) 
-            buffPtr += sprintf(buffPtr, "HAS=%d%c", hoursAfterSunriseIndex+1, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
-        
-        for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {            
-            if(fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isOn) {
+        for (hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++)
+            buffPtr += sprintf(buffPtr, "HAS=%d%c", hoursAfterSunriseIndex + 1, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise - 1 ? '\n' : ',');
+
+        for (hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
+            if (fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].isOn) {
                 buffPtr += sprintf(buffPtr, "%d,", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
-                for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+                for (hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
                     modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
                     err = &modelRun->hourlyModelStats[modelIndex];
-                    if(isContributingModel(err)) {
-                        buffPtr += sprintf(buffPtr, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1 : err->optimizedWeightPhase2, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise-1 ? '\n' : ',');
+                    if (isContributingModel(err)) {
+                        buffPtr += sprintf(buffPtr, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1 : err->optimizedWeightPhase2, hoursAfterSunriseIndex == fci->maxHoursAfterSunrise - 1 ? '\n' : ',');
                         emptyOutput = False;
                     }
                 }
             }
         }
-        if(!emptyOutput) {
+        if (!emptyOutput) {
             sprintf(fileName, "%s/%s.ModelMixBy.HA_HAS.%s.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), getGenericModelName(fci, modelIndex), fci->modelPermutations.currentPermutationIndex);
-            if((fp = fopen(fileName, "w")) == NULL) {
+            if ((fp = fopen(fileName, "w")) == NULL) {
                 sprintf(ErrStr, "Couldn't open file %s : %s", fileName, strerror(errno));
                 FatalError("dumpModelMix_EachModel_HAxHAS()", ErrStr);
             }
@@ -1084,17 +1055,15 @@ void dumpModelMix_EachModel_HAxHAS(forecastInputType *fci)
     }
 }
 
-int isContributingModel(modelStatsType *model)
-{
+int isContributingModel(modelStatsType *model) {
     // the current model is active if:
     // 1) isOn is set
     // 2) it's not a reference model (such as persistence)
     // 3) it hasn't been shut off because of too much missing data
-    return(model->isOn && !model->isReference);
+    return (model->isOn && !model->isReference);
 }
 
-void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci)
-{
+void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci) {
     //    for each HAS
     // +------ model -----
     // | %mix, %mix, ...
@@ -1102,509 +1071,494 @@ void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci)
     // A
     // |
     // |
-    
+
     FILE *fp;
     char fileName[1024];
     int modelIndex, hoursAheadIndex, hoursAfterSunriseIndex;
     //int hoursAhead, hoursAfterSunrise;
     modelRunType *modelRun;
     modelStatsType *err;
-         
-    if(fci->verbose) 
+
+    if (fci->verbose)
         fprintf(stderr, "\nGenerating model mix percentage files by hours after sunrise...\n");
-    
-    for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
-        sprintf(fileName, "%s/%s.percentByHAS.HA_Model.HAS=%d.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), hoursAfterSunriseIndex+1, fci->modelPermutations.currentPermutationIndex);
-        if((fp = fopen(fileName, "w")) == NULL) {
+
+    for (hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+        sprintf(fileName, "%s/%s.percentByHAS.HA_Model.HAS=%d.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), hoursAfterSunriseIndex + 1, fci->modelPermutations.currentPermutationIndex);
+        if ((fp = fopen(fileName, "w")) == NULL) {
             sprintf(ErrStr, "Couldn't open file %s : %s", fileName, strerror(errno));
             FatalError("dumpModelMix_EachModel_HAxHAS()", ErrStr);
         }
 
         // print header lines
         fprintf(fp, "#For hours after sunrise=%d: model percent by hours ahead and model type\n#siteName=%s,lat=%.2f,lon=%.3f,date span=%s-%s\n#hoursAhead,",
-                hoursAfterSunriseIndex+1, genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, fci->startDateStr, fci->endDateStr);
-        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) 
-            fprintf(fp, "%s%c", getGenericModelName(fci, modelIndex), modelIndex == fci->numModels-1 ? '\n' : ',');
-        
-        for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
+                hoursAfterSunriseIndex + 1, genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, fci->startDateStr, fci->endDateStr);
+        for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++)
+            fprintf(fp, "%s%c", getGenericModelName(fci, modelIndex), modelIndex == fci->numModels - 1 ? '\n' : ',');
+
+        for (hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
             fprintf(fp, "%d,", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
-            for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+            for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
                 modelRun = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex];
                 err = &modelRun->hourlyModelStats[modelIndex];
-                if(isContributingModel(err))
-                    fprintf(fp, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1 : err->optimizedWeightPhase2, modelIndex == fci->numModels-1 ? '\n' : ',');
+                if (isContributingModel(err))
+                    fprintf(fp, "%d%c", fci->skipPhase2 ? err->optimizedWeightPhase1 : err->optimizedWeightPhase2, modelIndex == fci->numModels - 1 ? '\n' : ',');
                 else
-                    fprintf(fp, "NA%c", modelIndex == fci->numModels-1 ? '\n' : ',');
+                    fprintf(fp, "NA%c", modelIndex == fci->numModels - 1 ? '\n' : ',');
             }
         }
         fclose(fp);
     }
 }
 
-void printByHour(forecastInputType *fci)
-{
+void printByHour(forecastInputType *fci) {
     FILE *fp;
     char fileName[1024];
     int modelIndex, hoursAheadIndex;
     modelRunType *modelRun;
     modelStatsType *err;
-         
-    for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
+
+    for (hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
         modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
 
         sprintf(fileName, "%s/%s.forecast.error.hoursAhead=%02d.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), modelRun->hoursAhead, fci->modelPermutations.currentPermutationIndex);
         //fprintf(stderr, "hour[%d] hour=%d file=%s\n", hoursAheadIndex, modelRun->hoursAhead, fileName);
         fp = fopen(fileName, "w");
 
-        fprintf(fp, "#siteName=%s,lat=%.2f,lon=%.2f,hours ahead=%d,N=%d,mean measured GHI=%.1f,date span=%s-%s\n",genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, 
+        fprintf(fp, "#siteName=%s,lat=%.2f,lon=%.2f,hours ahead=%d,N=%d,mean measured GHI=%.1f,date span=%s-%s\n", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon,
                 modelRun->hoursAhead, modelRun->numValidSamples, modelRun->meanMeasuredGHI, fci->startDateStr, fci->endDateStr);
         fprintf(fp, "#model,sum( model-ground ), sum( abs(model-ground) ), sum( (model-ground)^2 ), mae, mae percent, mbe, mbe percent, rmse, rmse percent\n");
 
-        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+        for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
             err = &modelRun->hourlyModelStats[modelIndex];
             fprintf(fp, "%s,%.0f,%.0f,%.0f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", fci->columnInfo[err->columnInfoIndex].columnDescription, err->sumModel_Ground, err->sumAbs_Model_Ground, err->sumModel_Ground_2,
-                            err->mae, err->maePct*100, err->mbe, err->mbePct*100, err->rmse, err->rmsePct*100);
+                    err->mae, err->maePct * 100, err->mbe, err->mbePct * 100, err->rmse, err->rmsePct * 100);
         }
         fclose(fp);
     }
 }
 
-void printByModel(forecastInputType *fci)
-{
+void printByModel(forecastInputType *fci) {
     FILE *fp;
     char fileName[1024];
     int modelIndex, hoursAheadIndex;
     modelRunType *modelRun;
     modelStatsType *err;
-    
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {   
+
+    for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
         sprintf(fileName, "%s/%s.forecast.error.model=%s.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), getGenericModelName(fci, modelIndex), fci->modelPermutations.currentPermutationIndex);
         fp = fopen(fileName, "w");
 
 
-        fprintf(fp, "#siteName=%s,lat=%.2f,lon=%.2f,error analysis=%s, date span=%s-%s\n", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, 
+        fprintf(fp, "#siteName=%s,lat=%.2f,lon=%.2f,error analysis=%s, date span=%s-%s\n", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon,
                 getGenericModelName(fci, modelIndex), fci->startDateStr, fci->endDateStr);
         fprintf(fp, "#model,N,hours ahead, mean measured GHI, sum( model-ground ), sum( abs(model-ground) ), sum( (model-ground)^2 ), mae, mae percent, mbe, mbe percent, rmse, rmse percent\n");
 
-            for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
-                modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
+        for (hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
+            modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
 
-                err = &modelRun->hourlyModelStats[modelIndex];
-                fprintf(fp, "%s,%d,%d,%.1f,%.0f,%.0f,%.0f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", fci->columnInfo[err->columnInfoIndex].columnDescription, 
-                    modelRun->numValidSamples,fci->hoursAheadGroup[hoursAheadIndex].hoursAhead,modelRun->meanMeasuredGHI,err->sumModel_Ground, err->sumAbs_Model_Ground, err->sumModel_Ground_2,
-                    err->mae, err->maePct*100, err->mbe, err->mbePct*100, err->rmse, err->rmsePct*100);
+            err = &modelRun->hourlyModelStats[modelIndex];
+            fprintf(fp, "%s,%d,%d,%.1f,%.0f,%.0f,%.0f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", fci->columnInfo[err->columnInfoIndex].columnDescription,
+                    modelRun->numValidSamples, fci->hoursAheadGroup[hoursAheadIndex].hoursAhead, modelRun->meanMeasuredGHI, err->sumModel_Ground, err->sumAbs_Model_Ground, err->sumModel_Ground_2,
+                    err->mae, err->maePct * 100, err->mbe, err->mbePct * 100, err->rmse, err->rmsePct * 100);
         }
         fclose(fp);
-    }    
+    }
 }
 
-void printByAnalysisType(forecastInputType *fci)
-{
-    FILE *fp;   
+void printByAnalysisType(forecastInputType *fci) {
+    FILE *fp;
     int modelIndex, hoursAheadIndex;
     modelRunType *modelRun;
     modelStatsType *err;
-  
-#ifdef PRINT_ALL_ANALYSIS_TYPES
-    if(!(fp = openErrorTypeFile(fci, "individualModelError.MAE")))
-        return;
-    
-    for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
-        modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
-        fprintf(fp, "%d,%d", modelRun->hoursAhead, modelRun->numValidSamples);
-        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {          
-            err = &modelRun->hourlyModelStats[modelIndex];
-            fprintf(fp, ",%.1f%%", err->maePct*100);
-        }
-        fprintf(fp, "\n");
-    }    
-    fclose(fp);   
 
-    if(!(fp = openErrorTypeFile(fci, "individualModelError.MBE")))
+#ifdef PRINT_ALL_ANALYSIS_TYPES
+    if (!(fp = openErrorTypeFile(fci, "individualModelError.MAE")))
         return;
-    
-    for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
+
+    for (hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
         modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
         fprintf(fp, "%d,%d", modelRun->hoursAhead, modelRun->numValidSamples);
-        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {          
+        for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
             err = &modelRun->hourlyModelStats[modelIndex];
-            fprintf(fp, ",%.1f%%", err->mbePct*100);
+            fprintf(fp, ",%.1f%%", err->maePct * 100);
         }
         fprintf(fp, "\n");
-    }    
-    fclose(fp);   
-#endif
-    if(!(fp = openErrorTypeFile(fci, "individualModelError.RMSE")))
+    }
+    fclose(fp);
+
+    if (!(fp = openErrorTypeFile(fci, "individualModelError.MBE")))
         return;
-    
-    for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
+
+    for (hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
+        modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
+        fprintf(fp, "%d,%d", modelRun->hoursAhead, modelRun->numValidSamples);
+        for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+            err = &modelRun->hourlyModelStats[modelIndex];
+            fprintf(fp, ",%.1f%%", err->mbePct * 100);
+        }
+        fprintf(fp, "\n");
+    }
+    fclose(fp);
+#endif
+    if (!(fp = openErrorTypeFile(fci, "individualModelError.RMSE")))
+        return;
+
+    for (hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
         //modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
         modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][0] : &fci->hoursAheadGroup[hoursAheadIndex];
 
         fprintf(fp, "%d,%d", modelRun->hoursAhead, modelRun->numValidSamples);
-        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {          
+        for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
             err = &modelRun->hourlyModelStats[modelIndex];
-            fprintf(fp, ",%.1f%%", err->rmsePct*100);
+            fprintf(fp, ",%.1f%%", err->rmsePct * 100);
         }
         fprintf(fp, "\n");
-    }    
-    fclose(fp);   
+    }
+    fclose(fp);
 }
 
-void printRmseTableHour(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
-{
-    FILE *fp;   
+void printRmseTableHour(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex) {
+    FILE *fp;
     int modelIndex;
     modelRunType *modelRun;
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
-    
-    if(!(fp = openErrorTypeFileHourly(fci, "RMSE", hoursAheadIndex, hoursAfterSunriseIndex)))
-       return;
+
+    if (!(fp = openErrorTypeFileHourly(fci, "RMSE", hoursAheadIndex, hoursAfterSunriseIndex)))
+        return;
     //fp = stderr;
-    
+
     //for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
-        fprintf(fp, "hours ahead = %d", modelRun->hoursAhead);
-        if(hoursAfterSunriseIndex >= 0)
-            fprintf(fp, ", hours after sunrise = %d", modelRun->hoursAfterSunrise);
-        fprintf(fp, "\nN = %d\n",  modelRun->numValidSamples);
-        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {          
-            if(modelRun->hourlyModelStats[modelIndex].isActive)
-                fprintf(fp, "%-35s = %.1f%%\n", getGenericModelName(fci, modelIndex), modelRun->hourlyModelStats[modelIndex].rmsePct*100);
-        }
-        fprintf(fp, "\n");
+    fprintf(fp, "hours ahead = %d", modelRun->hoursAhead);
+    if (hoursAfterSunriseIndex >= 0)
+        fprintf(fp, ", hours after sunrise = %d", modelRun->hoursAfterSunrise);
+    fprintf(fp, "\nN = %d\n", modelRun->numValidSamples);
+    for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+        if (modelRun->hourlyModelStats[modelIndex].isActive)
+            fprintf(fp, "%-35s = %.1f%%\n", getGenericModelName(fci, modelIndex), modelRun->hourlyModelStats[modelIndex].rmsePct * 100);
+    }
+    fprintf(fp, "\n");
     //}    
     //fclose(fp);   
 }
 
-FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int hoursAheadIndex, int hoursAfterSunriseIndex)
-{
+FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int hoursAheadIndex, int hoursAfterSunriseIndex) {
     char fileName[1024];
     static FILE *fp;
-//    int modelIndex;
+    //    int modelIndex;
     char satGHIerr[1024];
-//    modelRunType *modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
+    //    modelRunType *modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
     modelRunType *modelRun;
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
-    
-    if(fci->outputDirectory == NULL || fci->siteName == NULL) {
+
+    if (fci->outputDirectory == NULL || fci->siteName == NULL) {
         fprintf(stderr, "openErrorTypeFile(): got null outputDirectory or siteName\n");
         return NULL;
     }
-    
-    if(strcasecmp(analysisType, "rmse") == 0)
+
+    if (strcasecmp(analysisType, "rmse") == 0)
         sprintf(satGHIerr, "sat GHI RMSE=%.1f%%", modelRun->satModelStats.rmsePct * 100);
-    else if(strcasecmp(analysisType, "mae") == 0)
+    else if (strcasecmp(analysisType, "mae") == 0)
         sprintf(satGHIerr, "sat GHI MAE=%.1f%%", modelRun->satModelStats.maePct * 100);
-    else 
+    else
         sprintf(satGHIerr, "sat GHI MBE=%.1f%%", modelRun->satModelStats.mbePct * 100);
 
-    
+
     sprintf(fileName, "%s/%s.forecast.analysisType=%s.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), analysisType, fci->modelPermutations.currentPermutationIndex);
     //fp = fopen(fileName, "w");
     fp = stderr;
-    
+
     fprintf(fp, "siteName=%s\nlat=%.2f\nlon=%.2f\nanalysisType=%s\n%s\n", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, analysisType, satGHIerr);
-/*
-    fprintf(fp, "hours ahead,N,");
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++)  {
-        if(modelRun->hourlyModelStats[modelIndex].isActive)
-            fprintf(fp, "%s,", getGenericModelName(fci, modelIndex));
-    }
-    fprintf(fp, "\n");
-*/
-    
+    /*
+        fprintf(fp, "hours ahead,N,");
+        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++)  {
+            if(modelRun->hourlyModelStats[modelIndex].isActive)
+                fprintf(fp, "%s,", getGenericModelName(fci, modelIndex));
+        }
+        fprintf(fp, "\n");
+     */
+
     return fp;
 }
 
-FILE *openErrorTypeFile(forecastInputType *fci, char *fileNameStr)
-{
+FILE *openErrorTypeFile(forecastInputType *fci, char *fileNameStr) {
     char fileName[1024];
     static FILE *fp;
     int modelIndex;
     char satGHIerr[1024];
-    
-    if(fci->outputDirectory == NULL || fci->siteName == NULL) {
+
+    if (fci->outputDirectory == NULL || fci->siteName == NULL) {
         fprintf(stderr, "openErrorTypeFile(): got null outputDirectory or siteName\n");
         return NULL;
     }
-    
-    if(strcasecmp(fileNameStr, "rmse") == 0)
+
+    if (strcasecmp(fileNameStr, "rmse") == 0)
         sprintf(satGHIerr, "sat GHI RMSE=%.1f%%", fci->hoursAheadGroup[0].satModelStats.rmsePct * 100);
-    else if(strcasecmp(fileNameStr, "mae") == 0)
+    else if (strcasecmp(fileNameStr, "mae") == 0)
         sprintf(satGHIerr, "sat GHI MAE=%.1f%%", fci->hoursAheadGroup[0].satModelStats.maePct * 100);
-    else 
+    else
         sprintf(satGHIerr, "sat GHI MBE=%.1f%%", fci->hoursAheadGroup[0].satModelStats.mbePct * 100);
 
-    
+
     sprintf(fileName, "%s/%s.%s.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), fileNameStr, fci->modelPermutations.currentPermutationIndex);
     fp = fopen(fileName, "w");
-    
+
     fprintf(fp, "#siteName=%s,lat=%.2f,lon=%.2f,%s,%s,date span=%s-%s\n", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, fileNameStr, satGHIerr, fci->startDateStr, fci->endDateStr);
     fprintf(fp, "#hours ahead,N,");
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++)    
+    for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++)
         fprintf(fp, "%s,", getGenericModelName(fci, modelIndex));
     fprintf(fp, "\n");
-    
+
     return fp;
 }
 
-int getMaxHoursAhead(forecastInputType *fci, int modelIndex)
-{
+int getMaxHoursAhead(forecastInputType *fci, int modelIndex) {
     int columnIndex = fci->hoursAheadGroup[0].hourlyModelStats[modelIndex].columnInfoIndex;
     return (fci->columnInfo[columnIndex].maxhoursAhead);
 }
 
-char *getGenericModelName(forecastInputType *fci, int modelIndex)
-{
+char *getGenericModelName(forecastInputType *fci, int modelIndex) {
     static char modelDesc[1024];
-    
-    if(modelIndex < 0)
-        return("satellite");
-    if(modelIndex >= fci->numModels) {
+
+    if (modelIndex < 0)
+        return ("satellite");
+    if (modelIndex >= fci->numModels) {
         fprintf(stderr, "getGenericModelName(): Internal Error: got modelIndex = %d when numModels = %d", modelIndex, fci->numModels);
         exit(1);
     }
-    strcpy(modelDesc, fci->hoursAheadGroup[0].hourlyModelStats[modelIndex].columnName);  // should be something like ncep_RAP_DSWRF_1
-    modelDesc[strlen(modelDesc)-2] = '\0';   // lop off the _1 => ncep_RAP_DSWRF
+    strcpy(modelDesc, fci->hoursAheadGroup[0].hourlyModelStats[modelIndex].columnName); // should be something like ncep_RAP_DSWRF_1
+    modelDesc[strlen(modelDesc) - 2] = '\0'; // lop off the _1 => ncep_RAP_DSWRF
 
-    return(modelDesc);
+    return (modelDesc);
 }
 
-char *getColumnNameByHourModel(forecastInputType *fci, int hrInd, int modInd)
-{
+char *getColumnNameByHourModel(forecastInputType *fci, int hrInd, int modInd) {
     int col;
     static char modelDesc[1024];
-    
+
     // this should probably be solved in a data structure
-    for(col=0; col<fci->numColumnInfoEntries; col++) {
-            if(fci->columnInfo[col].hoursAheadIndex == hrInd && fci->columnInfo[col].modelIndex == modInd) {
-                strcpy(modelDesc, fci->columnInfo[col].columnName);
-                modelDesc[strlen(modelDesc)-2] = '\0';
-                return modelDesc;
-            }
+    for (col = 0; col < fci->numColumnInfoEntries; col++) {
+        if (fci->columnInfo[col].hoursAheadIndex == hrInd && fci->columnInfo[col].modelIndex == modInd) {
+            strcpy(modelDesc, fci->columnInfo[col].columnName);
+            modelDesc[strlen(modelDesc) - 2] = '\0';
+            return modelDesc;
+        }
     }
-    
+
     return NULL;
 }
 
 // this automatically parses out the hours ahead from the column names line
 // assumes uniformity in the number of hours ahead -- that is, that all models have the same number of 
 // hours ahead columns
-void getNumberOfHoursAhead(forecastInputType *fci, char *origLine)
-{
+
+void getNumberOfHoursAhead(forecastInputType *fci, char *origLine) {
     char *p, *q, *currPtr, copyLine[1024 * 1024], measName[1024];
     int lineLength = strlen(origLine);
     int hour;
- 
+
     //copyLine = (char *) malloc(1024 * 16);
-    strcpy(copyLine, origLine);  // this function is string destructive
+    strcpy(copyLine, origLine); // this function is string destructive
     currPtr = copyLine;
 
-    q = strstr(copyLine, "_1");  // this assumes the first instance of _1 will be a model entry...
-    if(q == NULL) {
+    q = strstr(copyLine, "_1"); // this assumes the first instance of _1 will be a model entry...
+    if (q == NULL) {
         FatalError("getNumberOfHoursAhead()", "problem getting number of hours ahead");
     }
-    
+
     p = q;
-    while(*p != *fci->delimiter && p > currPtr) p--;  
+    while (*p != *fci->delimiter && p > currPtr) p--;
     p++;
-    strncpy(measName, p, q-p+1);  // include the _
-    measName[q-p+1] = '\0';
-    
-    
-    while((q = strstr(currPtr, measName)) != NULL) {
-        while(*q != *fci->delimiter && q < (copyLine + lineLength)) q++;
+    strncpy(measName, p, q - p + 1); // include the _
+    measName[q - p + 1] = '\0';
+
+
+    while ((q = strstr(currPtr, measName)) != NULL) {
+        while (*q != *fci->delimiter && q < (copyLine + lineLength)) q++;
         p = q;
-        while(*p != '_' && p > copyLine) p--;
+        while (*p != '_' && p > copyLine) p--;
         p++;
         *q = '\0';
         hour = atoi(p);
 
-        if(hour <= 0 || hour > 500)
+        if (hour <= 0 || hour > 500)
             FatalError("getNumberOfHoursAhead()", "problem getting number of hours ahead");
 
         //fprintf(stderr, "hour[%d] = %d\n", fci->maxModelIndex, hour);
-        
+
         fci->hoursAheadGroup[fci->maxModelIndex].hoursAhead = hour;
         fci->maxModelIndex++;
-        
-        currPtr = q+1;
+
+        currPtr = q + 1;
     }
-    
-    if(fci->maxModelIndex < 3) {
+
+    if (fci->maxModelIndex < 3) {
         FatalError("getNumberOfHoursAhead()", "problem getting number of hours ahead");
     }
-    
-    if(fci->startHourLowIndex == -1) {
+
+    if (fci->startHourLowIndex == -1) {
         fci->startHourLowIndex = 0;
         fci->startHourHighIndex = fci->maxModelIndex;
     }
     //free(copyLine);
 }
 
-int parseHourIndexes(forecastInputType *fci, char *optarg)
-{
+int parseHourIndexes(forecastInputType *fci, char *optarg) {
     char *lowStr, *highStr;
     char backup[256];
-    
-    if(optarg == NULL || *optarg == '\0') {
+
+    if (optarg == NULL || *optarg == '\0') {
         fprintf(stderr, "Got bad low and/or high indexes for -r flag");
         return False;
     }
 
     strncpy(backup, optarg, 256);
     lowStr = highStr = backup;
-    
-    while(*highStr && *highStr != ',')
+
+    while (*highStr && *highStr != ',')
         highStr++;
 
-    if(*highStr) {
+    if (*highStr) {
         *highStr = '\0';
         highStr++;
-    }
-    else {
-        fprintf(stderr, "Got bad high index to -r flag");
+    } else {
+        fprintf(stderr, "Got bad high index to -r flag\n");
         return False;
     }
 
     fci->startHourLowIndex = atoi(lowStr);
     fci->startHourHighIndex = atoi(highStr);
-    
-    if(fci->startHourHighIndex < 0 || fci->startHourHighIndex > 100) {
-        fprintf(stderr, "Got bad high index to -r flag");
+
+    if (fci->startHourHighIndex < 0 || fci->startHourHighIndex > 100) {
+        fprintf(stderr, "Got bad high index to -r flag\n");
         return False;
-    }        
-    if(fci->startHourLowIndex < 0 || fci->startHourLowIndex > 100) {
-        fprintf(stderr, "Got bad low index to -r flag");
+    }
+    if (fci->startHourLowIndex < 0 || fci->startHourLowIndex > 100) {
+        fprintf(stderr, "Got bad low index to -r flag\n");
         return False;
-    }        
-    
+    }
+
     return True;
 }
 
-int parseDates(forecastInputType *fci, char *optarg)
-{
+int parseDates(forecastInputType *fci, char *optarg) {
     char *startStr, *endStr;
     char backup[256];
     dateTimeType *start, *end;
-    
-    if(optarg == NULL || *optarg == '\0') {
-        fprintf(stderr, "Got bad start and/or end dates for -a flag");
+
+    if (optarg == NULL || *optarg == '\0') {
+        fprintf(stderr, "Got bad start and/or end dates for -a flag\n");
         return False;
     }
 
     strncpy(backup, optarg, 256);
     startStr = endStr = backup;
 
-//    start = &sat->archiverStartDate;
-//    end = &sat->archiverEndDate;
-    
+    //    start = &sat->archiverStartDate;
+    //    end = &sat->archiverEndDate;
+
     start = &fci->startDate;
     end = &fci->endDate;
-    start->year = start->month = start->hour = start->min = 0;  // in case we get a short date
-    end->year = end->month = end->hour = end->min = 0;  // in case we get a short date
+    start->year = start->month = start->hour = start->min = 0; // in case we get a short date
+    end->year = end->month = end->hour = end->min = 0; // in case we get a short date
 
-    while(*endStr && *endStr != ',')
+    while (*endStr && *endStr != ',')
         endStr++;
 
-    if(*endStr) {
+    if (*endStr) {
         *endStr = '\0';
         endStr++;
-    }
-    else {
+    } else {
         fprintf(stderr, "Got bad end date to -a flag");
         return False;
     }
-                  // yyyymmddhhmm
-    sscanf(startStr, "%04d%02d%02d%02d%02d", &start->year, &start->month, &start->day, &start->hour, &start->min);   
-    setObsTime(start);  // calculate time_t and doy numbers
+    // yyyymmddhhmm
+    sscanf(startStr, "%04d%02d%02d%02d%02d", &start->year, &start->month, &start->day, &start->hour, &start->min);
+    setObsTime(start); // calculate time_t and doy numbers
 
-    if(!dateTimeSanityCheck(start)) {
+    if (!dateTimeSanityCheck(start)) {
         fprintf(stderr, "parseDates(): error in start date %s in argument string %s\n", startStr, backup);
-        return(False);
+        return (False);
     }
-    
-    sscanf(endStr  , "%4d%02d%02d%02d%02d", &end->year, &end->month, &end->day, &end->hour, &end->min);    
+
+    sscanf(endStr, "%4d%02d%02d%02d%02d", &end->year, &end->month, &end->day, &end->hour, &end->min);
     setObsTime(end);
 
-    if(!dateTimeSanityCheck(end)) {
+    if (!dateTimeSanityCheck(end)) {
         fprintf(stderr, "parseDates(): error in end date %s in argument string %s\n", endStr, backup);
-        return(False);
+        return (False);
     }
-            
+
     fci->startDateStr = strdup(dtToStringDateOnly(&fci->startDate));
     fci->endDateStr = strdup(dtToStringDateOnly(&fci->endDate));
 
-    
+
     return True;
 }
-        
+
 #define getModelN(modelIndex) (modelIndex < 0 ? (modelRun->satModelStats.N) : (modelRun->hourlyModelStats[modelIndex].N))
 
-void printHourlySummary(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
-{
+void printHourlySummary(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex) {
     int modelIndex, hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
     int hoursAfterSunrise = hoursAfterSunriseIndex + 1;
     modelRunType *modelRun;
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
     fprintf(stderr, "\nHR%d=== Summary for hours ahead %d ", hoursAhead, hoursAhead);
-    if(hoursAfterSunriseIndex >= 0)
+    if (hoursAfterSunriseIndex >= 0)
         fprintf(stderr, ", hours after sunrise %d ", hoursAfterSunrise);
     fprintf(stderr, "(number of good samples) ===\n");
     fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "N for group", modelRun->numValidSamples);
     fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, "ground GHI", modelRun->ground_N);
-    for(modelIndex=-1; modelIndex < fci->numModels; modelIndex++) {
-        if(modelIndex < 0 || modelRun->hourlyModelStats[modelIndex].isOn)
+    for (modelIndex = -1; modelIndex < fci->numModels; modelIndex++) {
+        if (modelIndex < 0 || modelRun->hourlyModelStats[modelIndex].isOn)
             fprintf(stderr, "HR%d\t%-40s : %d\n", hoursAhead, getGenericModelName(fci, modelIndex), getModelN(modelIndex));
     }
 }
-  
-void printHoursAheadSummaryCsv(forecastInputType *fci)
-{
+
+void printHoursAheadSummaryCsv(forecastInputType *fci) {
     int hoursAheadIndex, modelIndex;
     modelRunType *modelRun;
     char modelName[1024], tempFileName[2048];
-    
+
     //sprintf(filename, "%s/%s.wtRange=%.2f-%.2f_ha=%d-%d.csv", fci->outputDirectory, fci->siteName, fci->weightSumLowCutoff, fci->weightSumHighCutoff, fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead);
     sprintf(tempFileName, "%s/forecastSummary.%s.%s-%s.div=%d.hours=%d-%d.perm%02d.csv", fci->outputDirectory, genProxySiteName(fci), dtToStringDateOnly(&fci->startDate), dtToStringDateOnly(&fci->endDate), fci->numDivisions, fci->hoursAheadGroup[fci->startHourLowIndex].hoursAhead, fci->hoursAheadGroup[fci->startHourHighIndex].hoursAhead, fci->modelPermutations.currentPermutationIndex);
     fci->summaryFile.fileName = strdup(tempFileName);
-    
-    if((fci->summaryFile.fp = fopen(fci->summaryFile.fileName, "w")) == NULL) {
+
+    if ((fci->summaryFile.fp = fopen(fci->summaryFile.fileName, "w")) == NULL) {
         sprintf(ErrStr, "Couldn't open file %s : %s", fci->summaryFile.fileName, strerror(errno));
         FatalError("printHoursAheadSummaryCsv()", ErrStr);
     }
     // print the header
     fprintf(fci->summaryFile.fp, "#site=%s lat=%.3f lon=%.3f divisions=%d date span=%s-%s\n", genProxySiteName(fci), fci->multipleSites ? 999 : fci->lat, fci->multipleSites ? 999 : fci->lon, fci->numDivisions, fci->startDateStr, fci->endDateStr);
     fprintf(fci->summaryFile.fp, "#hoursAhead,group N,sat RMSE,p1RMSE,p2RMSE,p1SumWts calls,p1RMSE calls,p2SumWts calls,p2RMSE calls");
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+    for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
         strcpy(modelName, getGenericModelName(fci, modelIndex));
         fprintf(fci->summaryFile.fp, ",%s model, %s status,%s N,%s RMSE,%s %s,%s %s", modelName, modelName, modelName, modelName,
- modelName, WEIGHT_1_STR, modelName, WEIGHT_2_STR);
+                modelName, WEIGHT_1_STR, modelName, WEIGHT_2_STR);
     }
     fprintf(fci->summaryFile.fp, "\n");
 
     // generate model results
-    for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
+    for (hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
         modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
-//        modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
+        //        modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
         fprintf(fci->summaryFile.fp, "%d,%d,%.2f,%.2f,%.2f,%ld,%ld,%ld,%ld", modelRun->hoursAhead, modelRun->numValidSamples, modelRun->satModelStats.rmsePct * 100,
                 modelRun->optimizedRMSEphase1 * 100, modelRun->optimizedRMSEphase2 * 100, modelRun->phase1SumWeightsCalls, modelRun->phase1RMSEcalls, modelRun->phase2SumWeightsCalls, modelRun->phase2RMSEcalls);
-        for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {           
+        for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
             //if(modelRun->hourlyModelStats[modelIndex].isOn) {
-                fprintf(fci->summaryFile.fp, ",%s", modelRun->hourlyModelStats[modelIndex].isReference ? "reference" : "forecast"
-);
-                fprintf(fci->summaryFile.fp, ",%s", modelRun->hourlyModelStats[modelIndex].isOn ? "on" : "off");
-                fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].N : -999);
-                fprintf(fci->summaryFile.fp, ",%.2f", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].rmsePct * 100 : -999);
-                fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 : -999);   
-                fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 : -999);   
+            fprintf(fci->summaryFile.fp, ",%s", modelRun->hourlyModelStats[modelIndex].isReference ? "reference" : "forecast"
+                    );
+            fprintf(fci->summaryFile.fp, ",%s", modelRun->hourlyModelStats[modelIndex].isOn ? "on" : "off");
+            fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].N : -999);
+            fprintf(fci->summaryFile.fp, ",%.2f", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].rmsePct * 100 : -999);
+            fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 : -999);
+            fprintf(fci->summaryFile.fp, ",%d", modelRun->hourlyModelStats[modelIndex].isOn ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 : -999);
             //}
         }
         fprintf(fci->summaryFile.fp, "\n");
     }
-    
+
     fclose(fci->summaryFile.fp);
 }
 
@@ -1612,43 +1566,43 @@ void printHoursAheadSummaryCsv(forecastInputType *fci)
 // run as: -t -s 1 -a 2013062200,2013082500 -r0,15 -v -o /home/jim/mom/forecastOpt/output -w /home/jim/mom/forecastOpt/output/Sioux_Falls_SD.wtRange=0.95-1.05_ha=1-36.csv /var/www/html/kmh/data/adam/forecast.sioux_falls.csv
 
 // read in forecastOpt summary file (i.e, hours ahead, weights and RMSE numbers from a previous run)
-int readSummaryFile(forecastInputType *fci)
-{
+
+int readSummaryFile(forecastInputType *fci) {
     FILE *fp;
     char line[LINE_LENGTH], saveLine[LINE_LENGTH];
     char siteStr[256], latStr[256], lonStr[256];
     char *fields[MAX_FIELDS], *fldPtr;
     int numFields, i;
-    
-    if((fp = fopen(fci->summaryFile.fileName, "r")) == NULL) {
+
+    if ((fp = fopen(fci->summaryFile.fileName, "r")) == NULL) {
         sprintf(ErrStr, "Couldn't open summary file %s : %s", fci->summaryFile.fileName, strerror(errno));
         FatalError("readSummaryFile()", ErrStr);
     }
-    
-/*
-#site=Goodwin_Creek_MS lat=34.250 lon=-89.870
-#hoursAhead,group N,sat RMSE,phase 1 RMSE,phase 2 RMSE,phase 1 RMSE calls,phase 2 RMSE calls,ncep_RAP_DSWRF model, ncep_RAP_DSWRF status,ncep_RAP_DSWRF N,ncep_RAP_DSWRF RMSE,ncep_RAP_DSWRF Weight 1,ncep_RAP_DSWRF weight 2,persistence model, persistence status,persistence N,persistence RMSE,persistence Weight 1,persistence weight 2,ncep_NAM_hires_DSWRF_inst model, ncep_NAM_hires_DSWRF_inst status,ncep_NAM_hires_DSWRF_inst N,ncep_NAM_hires_DSWRF_inst RMSE,ncep_NAM_hires_DSWRF_inst Weight 1,ncep_NAM_hires_DSWRF_inst weight 2,ncep_NAM_DSWRF model, ncep_NAM_DSWRF status,ncep_NAM_DSWRF N,ncep_NAM_DSWRF RMSE,ncep_NAM_DSWRF Weight 1,ncep_NAM_DSWRF weight 2,ncep_GFS_sfc_DSWRF_surface_avg model, ncep_GFS_sfc_DSWRF_surface_avg status,ncep_GFS_sfc_DSWRF_surface_avg N,ncep_GFS_sfc_DSWRF_surface_avg RMSE,ncep_GFS_sfc_DSWRF_surface_avg Weight 1,ncep_GFS_sfc_DSWRF_surface_avg weight 2,ncep_GFS_sfc_DSWRF_surface_inst model, ncep_GFS_sfc_DSWRF_surface_inst status,ncep_GFS_sfc_DSWRF_surface_inst N,ncep_GFS_sfc_DSWRF_surface_inst RMSE,ncep_GFS_sfc_DSWRF_surface_inst Weight 1,ncep_GFS_sfc_DSWRF_surface_inst weight 2,ncep_GFS_DSWRF model, ncep_GFS_DSWRF status,ncep_GFS_DSWRF N,ncep_GFS_DSWRF RMSE,ncep_GFS_DSWRF Weight 1,ncep_GFS_DSWRF weight 2,NDFD_global model, NDFD_global status,NDFD_global N,NDFD_global RMSE,NDFD_global Weight 1,NDFD_global weight 2,cm model, cm status,cm N,cm RMSE,cm Weight 1,cm weight 2,ecmwf_ghi model, ecmwf_ghi status,ecmwf_ghi N,ecmwf_ghi RMSE,ecmwf_ghi Weight 1,ecmwf_ghi weight 2
-1,777,21.53,18.40,18.30,43758,73689,forecast,active,837,36.93,0.10,0.11,reference,active,836,27.03,0.00,0.00,forecast,active,837,38.62,0.00,0.00,forecast,active,846,40.64,0.00,0.00,forecast,active,837,32.50,0.00,0.00,forecast,active,820,32.35,0.10,0.07,forecast,active,830,32.30,0.00,0.00,forecast,active,829,38.35,0.00,0.00,forecast,active,807,19.65,0.80,0.84,forecast,active,838,30.11,0.00,0.00
-2,778,21.59,23.02,22.98,43758,6672666,forecast,active,835,39.38,0.10,0.10,reference,active,836,32.59,0.00,0.00,forecast,active,840,38.81,0.10,0.07,forecast,active,845,41.29,0.00,0.00,forecast,active,837,32.27,0.00,0.00,forecast,active,820,32.23,0.10,0.13,forecast,active,830,32.10,0.00,0.00,forecast,active,829,38.60,0.00,0.00,forecast,active,803,25.83,0.60,0.60,forecast,active,838,30.01,0.10,0.11
-*/
+
+    /*
+    #site=Goodwin_Creek_MS lat=34.250 lon=-89.870
+    #hoursAhead,group N,sat RMSE,phase 1 RMSE,phase 2 RMSE,phase 1 RMSE calls,phase 2 RMSE calls,ncep_RAP_DSWRF model, ncep_RAP_DSWRF status,ncep_RAP_DSWRF N,ncep_RAP_DSWRF RMSE,ncep_RAP_DSWRF Weight 1,ncep_RAP_DSWRF weight 2,persistence model, persistence status,persistence N,persistence RMSE,persistence Weight 1,persistence weight 2,ncep_NAM_hires_DSWRF_inst model, ncep_NAM_hires_DSWRF_inst status,ncep_NAM_hires_DSWRF_inst N,ncep_NAM_hires_DSWRF_inst RMSE,ncep_NAM_hires_DSWRF_inst Weight 1,ncep_NAM_hires_DSWRF_inst weight 2,ncep_NAM_DSWRF model, ncep_NAM_DSWRF status,ncep_NAM_DSWRF N,ncep_NAM_DSWRF RMSE,ncep_NAM_DSWRF Weight 1,ncep_NAM_DSWRF weight 2,ncep_GFS_sfc_DSWRF_surface_avg model, ncep_GFS_sfc_DSWRF_surface_avg status,ncep_GFS_sfc_DSWRF_surface_avg N,ncep_GFS_sfc_DSWRF_surface_avg RMSE,ncep_GFS_sfc_DSWRF_surface_avg Weight 1,ncep_GFS_sfc_DSWRF_surface_avg weight 2,ncep_GFS_sfc_DSWRF_surface_inst model, ncep_GFS_sfc_DSWRF_surface_inst status,ncep_GFS_sfc_DSWRF_surface_inst N,ncep_GFS_sfc_DSWRF_surface_inst RMSE,ncep_GFS_sfc_DSWRF_surface_inst Weight 1,ncep_GFS_sfc_DSWRF_surface_inst weight 2,ncep_GFS_DSWRF model, ncep_GFS_DSWRF status,ncep_GFS_DSWRF N,ncep_GFS_DSWRF RMSE,ncep_GFS_DSWRF Weight 1,ncep_GFS_DSWRF weight 2,NDFD_global model, NDFD_global status,NDFD_global N,NDFD_global RMSE,NDFD_global Weight 1,NDFD_global weight 2,cm model, cm status,cm N,cm RMSE,cm Weight 1,cm weight 2,ecmwf_ghi model, ecmwf_ghi status,ecmwf_ghi N,ecmwf_ghi RMSE,ecmwf_ghi Weight 1,ecmwf_ghi weight 2
+    1,777,21.53,18.40,18.30,43758,73689,forecast,active,837,36.93,0.10,0.11,reference,active,836,27.03,0.00,0.00,forecast,active,837,38.62,0.00,0.00,forecast,active,846,40.64,0.00,0.00,forecast,active,837,32.50,0.00,0.00,forecast,active,820,32.35,0.10,0.07,forecast,active,830,32.30,0.00,0.00,forecast,active,829,38.35,0.00,0.00,forecast,active,807,19.65,0.80,0.84,forecast,active,838,30.11,0.00,0.00
+    2,778,21.59,23.02,22.98,43758,6672666,forecast,active,835,39.38,0.10,0.10,reference,active,836,32.59,0.00,0.00,forecast,active,840,38.81,0.10,0.07,forecast,active,845,41.29,0.00,0.00,forecast,active,837,32.27,0.00,0.00,forecast,active,820,32.23,0.10,0.13,forecast,active,830,32.10,0.00,0.00,forecast,active,829,38.60,0.00,0.00,forecast,active,803,25.83,0.60,0.60,forecast,active,838,30.01,0.10,0.11
+     */
 
     // first comment line should look like this:
     // #site=Goodwin_Creek_MS lat=34.250 lon=-89.870
     fgets(line, LINE_LENGTH, fp);
     strcpy(saveLine, line);
     // split by space then by =
-    numFields = split(line, fields, MAX_FIELDS, " ");  /* split line */
-    if(numFields != 3) {
+    numFields = split(line, fields, MAX_FIELDS, " "); /* split line */
+    if (numFields != 3) {
         fprintf(stderr, "Error parsing %s: header line 1: expecting 3 fields but got %d: %s\n", fci->summaryFile.fileName, numFields, saveLine);
         exit(1);
     }
     strcpy(siteStr, fields[0]);
     strcpy(latStr, fields[1]);
     strcpy(lonStr, fields[2]);
-    
+
     // siteName
     numFields = split(siteStr, fields, MAX_FIELDS, "=");
-    if(numFields != 2) {
+    if (numFields != 2) {
         fprintf(stderr, "Error parsing %s: header line 1: can't figure siteName: %s\n", fci->summaryFile.fileName, saveLine);
         exit(1);
     }
@@ -1656,112 +1610,111 @@ int readSummaryFile(forecastInputType *fci)
 
     // latitude
     numFields = split(latStr, fields, MAX_FIELDS, "=");
-    if(numFields != 2) {
+    if (numFields != 2) {
         fprintf(stderr, "Error parsing %s: header line 1: can't figure latitude: %s\n", fci->summaryFile.fileName, saveLine);
         exit(1);
     }
     fci->lat = atof(fields[1]);
-    if(fci->lat < -90 || fci->lat > 90) {
+    if (fci->lat < -90 || fci->lat > 90) {
         fprintf(stderr, "Error parsing %s: header line 1: can't figure latitude: %s\n", fci->summaryFile.fileName, saveLine);
-        exit(1);        
+        exit(1);
     }
 
     // longitude
     numFields = split(lonStr, fields, MAX_FIELDS, "=");
-    if(numFields != 2) {
+    if (numFields != 2) {
         fprintf(stderr, "Error parsing %s: header line 1: can't figure longitude: %s\n", fci->summaryFile.fileName, saveLine);
         exit(1);
     }
     fci->lon = atof(fields[1]);
-    if(fci->lat < -180 || fci->lat > 180) {
+    if (fci->lat < -180 || fci->lat > 180) {
         fprintf(stderr, "Error parsing %s: header line 1: can't figure longitude: %s\n", fci->summaryFile.fileName, saveLine);
-        exit(1);        
+        exit(1);
     }
 
     // now we have to parse the column names line (example file: Penn_State_PA.wtRange=0.95-1.05_ha=1-36.csv)
     // #hoursAhead,group N,sat RMSE,phase 1 RMSE,phase 2 RMSE,phase 1 RMSE calls,phase 2 RMSE calls,ncep_RAP_DSWRF model, ncep_RAP_DSWRF status,ncep_RAP_DSWRF N,ncep_RAP_DSWRF RMSE,ncep_RAP_DSWRF Weight 1,ncep_RAP_DSWRF weight 2,persistence model, persistence status,persistence N,persistence RMSE,persistence Weight 1,persistence weight 2,ncep_NAM_hires_DSWRF_inst model, ncep_NAM_hires_DSWRF_inst status,ncep_NAM_hires_DSWRF_inst N,ncep_NAM_hires_DSWRF_inst RMSE,ncep_NAM_hires_DSWRF_inst Weight 1,ncep_NAM_hires_DSWRF_inst weight 2,ncep_NAM_DSWRF model, ncep_NAM_DSWRF status,ncep_NAM_DSWRF N,ncep_NAM_DSWRF RMSE,ncep_NAM_DSWRF Weight 1,ncep_NAM_DSWRF weight 2,ncep_GFS_sfc_DSWRF_surface_avg model, ncep_GFS_sfc_DSWRF_surface_avg status,ncep_GFS_sfc_DSWRF_surface_avg N,ncep_GFS_sfc_DSWRF_surface_avg RMSE,ncep_GFS_sfc_DSWRF_surface_avg Weight 1,ncep_GFS_sfc_DSWRF_surface_avg weight 2,ncep_GFS_sfc_DSWRF_surface_inst model, ncep_GFS_sfc_DSWRF_surface_inst status,ncep_GFS_sfc_DSWRF_surface_inst N,ncep_GFS_sfc_DSWRF_surface_inst RMSE,ncep_GFS_sfc_DSWRF_surface_inst Weight 1,ncep_GFS_sfc_DSWRF_surface_inst weight 2,ncep_GFS_DSWRF model, ncep_GFS_DSWRF status,ncep_GFS_DSWRF N,ncep_GFS_DSWRF RMSE,ncep_GFS_DSWRF Weight 1,ncep_GFS_DSWRF weight 2,NDFD_global model, NDFD_global status,NDFD_global N,NDFD_global RMSE,NDFD_global Weight 1,NDFD_global weight 2,cm model, cm status,cm N,cm RMSE,cm Weight 1,cm weight 2,ecmwf_ghi model, ecmwf_ghi status,ecmwf_ghi N,ecmwf_ghi RMSE,ecmwf_ghi Weight 1,ecmwf_ghi weight 2
 
-    char *forecastHeaderLine = line+1;  // skip # char
+    char *forecastHeaderLine = line + 1; // skip # char
     fgets(forecastHeaderLine, LINE_LENGTH, fp);
-    
-    numFields = split(line, fields, MAX_FIELDS, ",");  /* split line */
-    
-    for(i=0; i<numFields; i++) {
-        
-        
-       if(strstr(fields[i], WEIGHT_2_STR) != NULL) {
+
+    numFields = split(line, fields, MAX_FIELDS, ","); /* split line */
+
+    for (i = 0; i < numFields; i++) {
+
+
+        if (strstr(fields[i], WEIGHT_2_STR) != NULL) {
             fprintf(stderr, "\tgot %s\n", fields[i]);
         }
     }
-    
+
     fci->forecastLineNumber = 2;
 
     //modelRunType *modelRun;
-    
-    while(fgets(line, LINE_LENGTH, fp)) {
-        fci->forecastLineNumber++; 
-        
-        numFields = split(line, fields, MAX_FIELDS, ",");  /* split line */  
-        if(numFields < 20) {
+
+    while (fgets(line, LINE_LENGTH, fp)) {
+        fci->forecastLineNumber++;
+
+        numFields = split(line, fields, MAX_FIELDS, ","); /* split line */
+        if (numFields < 20) {
             sprintf(ErrStr, "Scanning line %d of file %s, got %d columns using delimiter \"%s\" (expecting at least 20).\nEither delimiter flag or -s arg is wrong", fci->forecastLineNumber, fci->forecastTableFile.fileName, numFields, fci->delimiter);
             FatalError("readSummaryFile()", ErrStr);
         }
-                      
+
         //int hoursAhead = atoi(fields[0]);
         //modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
-        
+
         // siteGroup
         fldPtr = fields[0];
-/*
-        if(fci->siteGroup == NULL) {
-            fci->siteGroup = strdup(fldPtr);
-        }
-        else {
-            if(!fci->multipleSites && strcasecmp(fldPtr, fci->siteGroup) != 0) {
-                fprintf(fci->warningsFile.fp, "Warning: siteGroup changed from %s to %s\n", fci->siteGroup, fldPtr);
-            }
-        }
+        /*
+                if(fci->siteGroup == NULL) {
+                    fci->siteGroup = strdup(fldPtr);
+                }
+                else {
+                    if(!fci->multipleSites && strcasecmp(fldPtr, fci->siteGroup) != 0) {
+                        fprintf(fci->warningsFile.fp, "Warning: siteGroup changed from %s to %s\n", fci->siteGroup, fldPtr);
+                    }
+                }
         
-        // siteName
-        fldPtr = fields[1];
+                // siteName
+                fldPtr = fields[1];
 
-        if(!fci->multipleSites && strcasecmp(fldPtr, fci->siteName) != 0) {
-            fprintf(fci->warningsFile.fp, "Warning: siteName changed from %s to %s\n", fci->siteName, fldPtr);
-        }
+                if(!fci->multipleSites && strcasecmp(fldPtr, fci->siteName) != 0) {
+                    fprintf(fci->warningsFile.fp, "Warning: siteName changed from %s to %s\n", fci->siteName, fldPtr);
+                }
                 
-        // lat & lon
-        lat = atof(fields[2]);
-        lon = atof(fields[3]);
+                // lat & lon
+                lat = atof(fields[2]);
+                lon = atof(fields[3]);
 
-        if(fci->lat == -999 || fci->lon == -999) {
-            fci->lat = lat;
-            fci->lon = lon;
-        }
-        else {
-            if(!fci->multipleSites && fabs(lat - fci->lat) > 0.01) {
-                fprintf(fci->warningsFile.fp, "Warning: latitude changed from %.3f to %.3f\n", fci->lat, lat);
-            }
-            if(!fci->multipleSites && fabs(lon - fci->lon) > 0.01) {
-                fprintf(fci->warningsFile.fp, "Warning: longitude changed from %.3f to %.3f\n", fci->lon, lon);
-            }        
-        }
+                if(fci->lat == -999 || fci->lon == -999) {
+                    fci->lat = lat;
+                    fci->lon = lon;
+                }
+                else {
+                    if(!fci->multipleSites && fabs(lat - fci->lat) > 0.01) {
+                        fprintf(fci->warningsFile.fp, "Warning: latitude changed from %.3f to %.3f\n", fci->lat, lat);
+                    }
+                    if(!fci->multipleSites && fabs(lon - fci->lon) > 0.01) {
+                        fprintf(fci->warningsFile.fp, "Warning: longitude changed from %.3f to %.3f\n", fci->lon, lon);
+                    }        
+                }
         
-        (void) readDataFromLine(fci, fields);
+                (void) readDataFromLine(fci, fields);
         
 
-        if(fci->numValidSamples == 3)
-            return True;
-*/
+                if(fci->numValidSamples == 3)
+                    return True;
+         */
 
         fci->numInputRecords++;
 
     }
-    
-    return(True);
+
+    return (True);
 }
 
-void dumpWeightedTimeSeries(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex)
-{
+void dumpWeightedTimeSeries(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex) {
     int sampleInd, modelIndex;
     double weight, weightTotal;
     timeSeriesType *thisSample;
@@ -1769,120 +1722,113 @@ void dumpWeightedTimeSeries(forecastInputType *fci, int hoursAheadIndex, int hou
     modelRunType *modelRun;
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
-/*
-  if(!fci->weightedTimeSeriesFp)
-    return;
-*/
+    /*
+      if(!fci->weightedTimeSeriesFp)
+        return;
+     */
 
-    for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
+    for (sampleInd = 0; sampleInd < fci->numTotalSamples; sampleInd++) {
         thisSample = &fci->timeSeries[sampleInd];
-        if(thisSample->isValid) {
+        if (thisSample->isValid) {
             weightTotal = 0;
             thisSample->optimizedGHI = 0;
-            for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+            for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
                 thisModelErr = &modelRun->hourlyModelStats[modelIndex];
-                            
-                if(modelRun->hourlyModelStats[modelIndex].isOn) {
+
+                if (modelRun->hourlyModelStats[modelIndex].isOn) {
                     weight = thisModelErr->optimizedWeightPhase2;
                     thisSample->optimizedGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
-                    weightTotal += weight;            
-                }            
-            }        
+                    weightTotal += weight;
+                }
+            }
         }
 
         //fprintf(stderr, "DWTS: %s,%d,%f,%f,%f\n",dtToStringCsv2(&thisSample->dateTime),fci->hoursAheadGroup[hoursAheadIndex].hoursAhead,thisSample->optimizedGHI/weightTotal,thisSample->optimizedGHI,weightTotal);
     }
 }
 
-char *genProxySiteName(forecastInputType *fci)
-{
+char *genProxySiteName(forecastInputType *fci) {
     static char returnSite[1024];
-    if(fci->multipleSites) 
+    if (fci->multipleSites)
         sprintf(returnSite, "MultiSite-sites=%d", fci->numSites);
     else
         strcpy(returnSite, fci->siteName);
-    
+
     return returnSite;
 }
 
-int getHoursAheadIndex(forecastInputType *fci, int hoursAhead)
-{
+int getHoursAheadIndex(forecastInputType *fci, int hoursAhead) {
     int hoursAheadIndex;
-    
-    for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex<=fci->startHourHighIndex; hoursAheadIndex++) {
-        if(fci->hoursAheadGroup[hoursAheadIndex].hoursAhead == hoursAhead)
-             return hoursAheadIndex;
+
+    for (hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
+        if (fci->hoursAheadGroup[hoursAheadIndex].hoursAhead == hoursAhead)
+            return hoursAheadIndex;
     }
     return -1;
 }
 
-int getHoursAfterSunriseIndex(forecastInputType *fci, int hoursAfterSunrise)
-{
+int getHoursAfterSunriseIndex(forecastInputType *fci, int hoursAfterSunrise) {
     int hoursAfterSunriseIndex;
-    
-    for(hoursAfterSunriseIndex=0; hoursAfterSunriseIndex<=fci->startHourHighIndex; hoursAfterSunriseIndex++) {
-        if(fci->hoursAfterSunriseGroup[0][hoursAfterSunriseIndex].hoursAfterSunrise == hoursAfterSunrise)
-             return hoursAfterSunriseIndex;
+
+    for (hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex <= fci->startHourHighIndex; hoursAfterSunriseIndex++) {
+        if (fci->hoursAfterSunriseGroup[0][hoursAfterSunriseIndex].hoursAfterSunrise == hoursAfterSunrise)
+            return hoursAfterSunriseIndex;
     }
     return -1;
 }
 
-int getModelIndex(forecastInputType *fci, char *modelName)
-{
+int getModelIndex(forecastInputType *fci, char *modelName) {
     int modelIndex;
     char *currName;
-    
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+
+    for (modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
         currName = getGenericModelName(fci, modelIndex);
-        if(strcmp(currName, modelName) == 0)
-             return modelIndex;
+        if (strcmp(currName, modelName) == 0)
+            return modelIndex;
     }
     return -1;
 }
 
-char *parseEquals(char *inString)
-{
+char *parseEquals(char *inString) {
     char *fields[MAX_FIELDS], saveStr[LINE_LENGTH];
     int numFields;
-    
+
     strcpy(saveStr, inString);
     numFields = split(inString, fields, MAX_FIELDS, "=");
-    if(numFields != 2) {
+    if (numFields != 2) {
         fprintf(stderr, "Error parsing header line: can't figure siteName: %s\n", saveStr);
         return NULL;
     }
-    
+
     return fields[1];
 }
 
-
-void initPermutationSwitches(forecastInputType *fci)
-{
+void initPermutationSwitches(forecastInputType *fci) {
     permutationType *perm = &fci->modelPermutations;
     int p;
-    
+
     perm->numPermutations = pow(2, fci->numContribModels);
-    
-/*
- for numModels = 5, numPermutations = 32
- bitfields for permutationIndex would look like:
-    1 = 0000 0001
-    2 = 0000 0010
-    3 = 0000 0011
-    [...]
-   23 = 0001 0111
-   24 = 0001 1000
-   25 = 0001 1001
-   26 = 0001 1010
-    [...]
-   31 = 0001 1111  <= all model on
-*/
-    for(p=0; p < fci->numContribModels; p++) {
-        perm->masks[p] = 1 << p;  // shift binary 1 left to form mask
-//        fprintf(stderr, "mask for %d : %X\n", p, perm->masks[p]);
+
+    /*
+     for numModels = 5, numPermutations = 32
+     bitfields for permutationIndex would look like:
+        1 = 0000 0001
+        2 = 0000 0010
+        3 = 0000 0011
+        [...]
+       23 = 0001 0111
+       24 = 0001 1000
+       25 = 0001 1001
+       26 = 0001 1010
+        [...]
+       31 = 0001 1111  <= all models on
+     */
+    for (p = 0; p < fci->numContribModels; p++) {
+        perm->masks[p] = 1 << p; // shift binary 1 left to form mask
+        //        fprintf(stderr, "mask for %d : %X\n", p, perm->masks[p]);
     }
-    
-    perm->currentPermutationIndex = perm->numPermutations-1;  
+
+    perm->currentPermutationIndex = perm->numPermutations - 1;
 }
 
 // for informational purposes
@@ -1897,53 +1843,64 @@ void initPermutationSwitches(forecastInputType *fci)
 #define ModelMask9  0x100
 #define ModelMask10 0x200
 
-void setPermutationSwitches(forecastInputType *fci, int permutationIndex)
-{
+void setPermutationSwitches(forecastInputType *fci, int permutationIndex) {
     int i;
     permutationType *perm = &fci->modelPermutations;
-    
-    if(perm->numPermutations == 0)
+
+    if (perm->numPermutations == 0)
         initPermutationSwitches(fci);
-    
-    if(permutationIndex >= perm->numPermutations || permutationIndex < 1) {
+
+    if (permutationIndex >= perm->numPermutations || permutationIndex < 1) {
         FatalError("setPermutationSwitches()", "Got permutation index out of range.");
     }
-    
+
     perm->currentPermutationIndex = permutationIndex;
 
-    for(i=0;i < fci->numModels; i++) {
+    for (i = 0; i < fci->numModels; i++) {
         perm->modelSwitches[i] = permutationIndex & perm->masks[i];
     }
-    
+
     fprintf(stderr, "for permutationIndex %d: ", permutationIndex);
-    for(i=fci->numModels-1; i >= 0; i--) { fprintf(stderr, "%c", perm->modelSwitches[i] ? '1' : '0'); }
+    for (i = fci->numModels - 1; i >= 0; i--) {
+        fprintf(stderr, "%c", perm->modelSwitches[i] ? '1' : '0');
+    }
     fprintf(stderr, "\n");
 }
 
-void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int permutationIndex)
-{
-    int i,maskInd;
+void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int permutationIndex) {
+    int i, maskInd;
     permutationType *perm = &fci->modelPermutations;
     modelRunType *modelRun;
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
-
-    perm->currentPermutationIndex = permutationIndex;
+    int hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
     
-    fprintf(stderr, "\n=== Setting model permutation switches for %d ===\n", permutationIndex);
-    for(i=0,maskInd=0;i < fci->numModels; i++) {
+    perm->currentPermutationIndex = permutationIndex;
+
+    /*
+    4,9,13,-999,-999,100,-999,1243,50.6
+    4,9,14,-999,-999,100,-999,737,47.5
+    4,9,15,-999,-999,100,-999,302,51.4
+    4,12,1,-999,-999,-999,100,939,48.0  <-- when switching HA from 9 to 12 model switches (shouldn't)
+    4,12,2,-999,-999,-999,100,2035,38.3
+    4,12,3,-999,-999,-999,100,2055,32.2
+    4,12,4,-999,-999,-999,100,2099,28.2
+     */
+
+    fprintf(stderr, "\nMASK=== Setting model permutation switches for %d, hoursAhead=%d, hoursAfterSunRise=%d ===\n", permutationIndex, hoursAhead, hoursAfterSunriseIndex+1);
+    for (i = 0, maskInd = 0; i < fci->numModels; i++, maskInd++) {
         // if model is active (i.e., there's data) and not a reference model
-        if(!modelRun->hourlyModelStats[i].isActive) {
-            modelRun->hourlyModelStats[i].isOn = False;  // if it's not active, it's not on
-        }
-        else if(modelRun->hourlyModelStats[i].isReference) {
-            fprintf(stderr, "model %s is reference\n", getGenericModelName(fci, i));
-            modelRun->hourlyModelStats[i].isOn = True;
-        }
-        else {
-            modelRun->hourlyModelStats[i].isOn = (permutationIndex & perm->masks[maskInd]);
-            fprintf(stderr, "model %s is %s\n", getGenericModelName(fci, i), modelRun->hourlyModelStats[i].isActive ? "on" : "off");
-            maskInd++;
+        modelRun->hourlyModelStats[i].isOn = False;
+        if (modelRun->hourlyModelStats[i].isActive) {
+            if (modelRun->hourlyModelStats[i].isReference) {
+                fprintf(stderr, "model %s is reference\n", getGenericModelName(fci, i));
+                modelRun->hourlyModelStats[i].isOn = True;
+                maskInd--; // not a maskable model so keep the maskInd the same
+            } else {
+                modelRun->hourlyModelStats[i].isOn = (permutationIndex & perm->masks[maskInd]);
+                fprintf(stderr, "MASKmodel %s is %s (maskInd=%d, permIndex=%d & mask=%d)\n", getGenericModelName(fci, i),
+                        modelRun->hourlyModelStats[i].isOn ? "on" : "off", maskInd, permutationIndex, perm->masks[maskInd]);
+            }
         }
     }
-    fprintf(stderr, "=== done ===\n");
-}
+        fprintf(stderr, "MASK=== done ===\n");
+    }

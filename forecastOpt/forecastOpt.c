@@ -172,6 +172,7 @@ void processForecast(forecastInputType *fci)
     initPermutationSwitches(fci);
     
     for(permutationIndex = 1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
+//    for(permutationIndex = fci->modelPermutations.numPermutations-1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
         runErrorAnalysis(fci, permutationIndex);  // for example, 1 to 31
     }
 
