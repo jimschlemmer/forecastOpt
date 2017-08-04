@@ -23,6 +23,30 @@ void fatalError(char *functName, char *errStr, char *file, int linenumber) {
     fatalErrorWithExitCode(functName, errStr, file, linenumber, exitCode);
 }
 
+// [sunspot]:/home/jim/forecast/forecastOpt/data> ls
+// nwp  surfrad  v3
+// boulder.HRRR.HA14.csv 
+
+int readNWPforecastData(forecastInputType *fci) {
+    return True;
+}
+
+// surface.bondville.2015-2016.GHI.csv
+int readSurfaceData(forecastInputType *fci) {
+    return True;    
+}
+
+// v3.desertRock.2015-2016.GHI.csv
+int readV3data(forecastInputType *fci) {
+    return True;    
+}
+
+// [sunspot]:/home/jim/satmod/auxillaryData/clearsky/north_america_00/GHI
+// north_america.20080101.001.000000.clearsky.grid
+int readClearskyData(forecastInputType *fci) {
+    return True;    
+}
+
 int readForecastFile(forecastInputType *fci) {
     char line[LINE_LENGTH];
     int numFields;

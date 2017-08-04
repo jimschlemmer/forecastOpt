@@ -28,6 +28,12 @@ extern "C" {
 
 void initForecastInfo(forecastInputType *fci);
 void incrementTimeSeries(forecastInputType *fci);
+// new file-based data scanning functions
+int  readNWPforecastData(forecastInputType *fci);
+int  readSurfaceData(forecastInputType *fci);
+int  readV3data(forecastInputType *fci);
+int  readClearskyData(forecastInputType *fci);
+//
 int  readForecastFile(forecastInputType *fci);
 int  readDataFromLine(forecastInputType *fci, char *fields[], int numFields);
 int  parseDateTime(forecastInputType *fci, dateTimeType *dt, char *dateTimeStr);
