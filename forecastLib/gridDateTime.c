@@ -606,3 +606,19 @@ dateTimeType calculateSunrise(dateTimeType *dt, double lat, double lon)
     
     return sunrise;
 }
+
+double calculateZenithAngle(dateTimeType *dt, double lat, double lon)
+{
+    ae_pack aep;
+
+    setObsTime(dt); // calculate time_t and doy numbers
+
+    aep.lat = lat;
+    aep.lon = lon;
+    aep.year = dt->year; //tm->tm_year+1900;
+    aep.doy = dt->doy;// tm->tm_yday+1;
+    aep.hour = dt->hour;
+    sunae(&aep);
+    
+    return (aep.zen * 180 / M_PI);
+}

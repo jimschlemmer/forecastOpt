@@ -29,7 +29,7 @@ char ErrStr[2048];
 void clearModelStats(modelStatsType *thisModelStats);
 int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex);
 int cmpDouble(const void *x, const void *y);
-int computeModelRMSE(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex);
+//int computeModelRMSE(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex);
 double computeMBEcustom(forecastInputType *fci, mbeSelectType which);
 double computeMAEcustom(forecastInputType *fci, mbeSelectType which);
 
@@ -75,7 +75,7 @@ int filterHourlyForecastData(forecastInputType *fci, int hoursAheadIndex, int ho
         modelRun->hourlyModelStats[modelIndex].N = 0;
 
     for(sampleInd=0; sampleInd<fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         thisSample->isValid = True;
         
         if(thisSample->zenith > 90) {
@@ -227,8 +227,10 @@ double computeMBEcustom(forecastInputType *fci, mbeSelectType which)
     int count=0, hoursAhead = modelRun->hoursAhead;
 #endif
     
+    int hoursAheadIndex = 0;
+    
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         if(thisSample->isValid) {
             switch(which) {
                 case SatGHI : val = thisSample->satGHI; break;
@@ -257,8 +259,9 @@ double computeMAEcustom(forecastInputType *fci, mbeSelectType which)
     int count=0, hoursAhead = modelRun->hoursAhead;
 #endif
     
+    int hoursAheadIndex = 0;
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         if(thisSample->isValid) {
             switch(which) {
                 case SatGHI : val = thisSample->satGHI; break;
@@ -295,7 +298,7 @@ int computeHourlyBiasErrors(forecastInputType *fci, int hoursAheadIndex, int hou
 #endif
     
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         if(thisSample->isValid) {
 
 #ifdef nDEBUG
@@ -387,7 +390,7 @@ int computeHourlyRmseErrors(forecastInputType *fci, int hoursAheadIndex, int hou
 #endif
     
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         if(thisSample->isValid) {
 #ifdef nDEBUG
             if(firstTime) {
@@ -506,7 +509,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
     
     // compute optimizedGHI, ktClearsky, ktOptimizedGHI
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         if(thisSample->sunIsUp && thisSample->isValid) {
             // instead of each model having a separate rmse, they will have a composite rmse
             weightTotal = 0;
@@ -538,7 +541,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
     
     // now print it all out to the TS output file
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         if(thisSample->sunIsUp) {
             modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][thisSample->hoursAfterSunrise - 1] : &fci->hoursAheadGroup[hoursAheadIndex];
             
@@ -620,7 +623,7 @@ int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
     fprintf(stderr, "#year,month,day,hour,clr,satGHI,optGHI,ratioSat,ratioOpt\n");
 #endif
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         sortedKtSatGHI[sampleInd] = 0;
         sortedKtOptimizedGHI[sampleInd] = 0;
         if(thisSample->sunIsUp && thisSample->isValid && thisSample->clearskyGHI > 200) {
@@ -692,7 +695,7 @@ int correctOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
 #endif
 
         for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {  // using A & B recompute TS optGHI as correctedOptimizedGHI
-            thisSample = &fci->timeSeries[sampleInd];
+            thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
             if(thisSample->sunIsUp && thisSample->isValid && thisSample->clearskyGHI > 10) {
                 double COR = modelRun->correctionVarB + (modelRun->correctionVarA - modelRun->correctionVarB) * thisSample->ktOptimizedGHI;
                 double X = MIN(1.025, COR * thisSample->ktOptimizedGHI);
@@ -768,7 +771,7 @@ int dumpHourlyOptimizedTS_HAS_depricated(forecastInputType *fci, int hoursAheadI
     weightedModelErr->sumModel_Ground_2 = 0;
     
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         if(thisSample->isValid) {
             // instead of each model having a separate rmse, they will have a composite rmse
             weightTotal = 0;
@@ -813,7 +816,7 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, 
     weightedModelErr->sumModel_Ground_2 = 0;
     
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         if(thisSample->isValid) {
 
 #ifdef DEBUG_2
@@ -971,7 +974,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
         // N += modelRun->numValidSamples;
         // meanMeasuredGHI += modelRun->meanMeasuredGHI;
         for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-            thisSample = &fci->timeSeries[sampleInd];
+            thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
             if(thisSample->isValid) {
 #ifdef DEBUG_HAS
                 fprintf(stderr, "DEBUG:%s,%s,HA=%d,HAS=%d,", dtToStringCsv2(&thisSample->dateTime), thisSample->siteName, modelRun->hoursAhead, modelRun->hoursAfterSunrise);
@@ -1007,7 +1010,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
                         // add up weight * GHI for each included forecast model
                         if(thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] < 0) {
                             fprintf(stderr, "Problem: trying to add in a negative GHI: %.1f [%s, hoursAhead=%d, model=%s]\n", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex],
-                                    dtToStringCsv2(&thisSample->dateTime), hoursAhead, thisModelStats->columnName);
+                                    dtToStringCsv2(&thisSample->dateTime), hoursAhead, thisModelStats->modelName);
                         }
                         thisSample->optimizedGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                         weightTotal += weight;               
@@ -1092,7 +1095,7 @@ void dumpNumModelsReportingTable(forecastInputType *fci)
     fprintf(fci->modelsAttendenceFile.fp, "\n");
     
     for(sampleInd=0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
+        thisSample = &fci->nwpTimeSeries[hoursAheadIndex].timeSeries[sampleInd];
         if(thisSample->sunIsUp) {
             fprintf(fci->modelsAttendenceFile.fp, "%s", dtToStringCsv2(&thisSample->dateTime));
             for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) { 

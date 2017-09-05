@@ -5,7 +5,7 @@
  */
 
 #ifndef FORECASTOPT_H
-#define	FORECASTOPT_H
+#define FORECASTOPT_H
 
 #define NO_DUMP 0
 #define DO_DUMP 1
@@ -29,11 +29,11 @@ extern int errno;
 #include "ioUtils.h"
 #include "timeUtils.h"
 
-#ifdef	__cplusplus
+#ifdef __cplusplus
 extern "C" {
 #endif
 
-#ifdef	__cplusplus
+#ifdef __cplusplus
 }
 #endif
 
@@ -44,11 +44,11 @@ extern "C" {
 
 #define FatalError(function, message) fatalError(function, message, __FILE__, __LINE__)
 
-#define MAX_MODELS 16
+#define MAX_MODELS 10
 #define MAX_SITES 16
-#define MAX_HOURS_AHEAD 64
-#define MIN_GHI_VAL 5
+#define MAX_HOURS_AHEAD 250
 #define MAX_HOURS_AFTER_SUNRISE 16
+#define MIN_GHI_VAL 5
 
 // file-level character reading limits
 #define MAX_FIELDS 2048
@@ -63,24 +63,26 @@ extern "C" {
 
 //#define isContributingModel(model) (model.isActive && !model.isReference)
 
-typedef enum { MKunset, regular } modelKindType;
+typedef enum {
+    MKunset, regular
+} modelKindType;
 
 typedef struct {
-    int columnInfoIndex;
-    char *columnName;  // short cut to columnName below
+    int modelInfoIndex;
+    char *modelName; // short cut to modelName below
     double sumModel_Ground, sumAbs_Model_Ground, sumModel_Ground_2;
-    double mbe, mae, rmse; 
+    double mbe, mae, rmse;
     double mbePct, maePct, rmsePct;
-    int weight;  // used for current calculation
-    int optimizedWeightPhase1;  // the value associated with the minimized RMSE for all models in pass 1
-    int optimizedWeightPhase2;  // the value associated with the minimized RMSE for all models in pass 2
+    int weight; // used for current calculation
+    int optimizedWeightPhase1; // the value associated with the minimized RMSE for all models in pass 1
+    int optimizedWeightPhase2; // the value associated with the minimized RMSE for all models in pass 2
     int N;
     char isActive, isOn, isReference, tooMuchDataMissing;
     long long powerOfTen;
 } modelStatsType;
 
 typedef struct {
-    int hoursAhead, hoursAfterSunrise;  // both or just hoursAhead can be active, depending on run mode 
+    int hoursAhead, hoursAfterSunrise; // both or just hoursAhead can be active, depending on run mode 
     int numValidSamples;
     int ground_N;
     double meanMeasuredGHI;
@@ -102,24 +104,36 @@ typedef struct {
     double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, optimizedGHI;
     double ktSatGHI, ktOptimizedGHI, correctedOptimizedGHI;
     modelDataType forecastData[MAX_HOURS_AHEAD];
+    double nwpData[MAX_MODELS];
     char isValid, sunIsUp;
     dateTimeType sunrise;
     int hoursAfterSunrise;
-    char *siteName;  // useful for multiple site runs
+    int hoursAheadIndex;
+    char *siteName; // useful for multiple site runs
 } timeSeriesType;
 
 typedef struct {
-    char *columnName;
-    char *columnDescription;
-    int  inputColumnNumber;
-    int  maxhoursAhead;
-    int  hoursAheadIndex;
-    int  modelIndex;
-    int  numGood, numMissing;
+    char *modelName;
+    char *modelDescription;
+    int inputColumnNumber;
+    int maxhoursAhead;
+    int hoursAheadIndex;
+    int modelIndex;
+} modelType;
+
+// this data structure describes a single T/S file with surface, v3, NWP and clearsky data
+// we'll have one of these for each such file, so it's number of NWPs * number of HAs.
+typedef struct {
+    modelType modelInfo;
+    int hoursAhead, modelIndex, hoursAheadIndex;
+    timeSeriesType *timeSeries;
+    int numTimeSeriesSamples;
+    int numGood, numMissing;
     double percentMissing;
-} columnType;
+} nwpTimeSeriesType;
 
 // this is for site-specific forecast model on/off settings
+
 typedef struct {
     int numModels;
     char *siteName;
@@ -130,21 +144,21 @@ typedef struct {
 typedef struct {
     char *fileName;
     FILE *fp;
-    int  lineNumber;
-    char *headerLine;  // not used by all
+    int lineNumber;
+    char *headerLine; // not used by all
 } fileType;
 
 typedef struct {
-    int numPermutations;  // e.g., 32 for numModels==5
-    int masks[MAX_MODELS];     // 0001 0010 0100 1000, etc.  
-    int currentPermutationIndex;  // one of switchIndexes
-    int modelSwitches[MAX_MODELS];  // = mask[i] applied to currentPermutationIndex
+    int numPermutations; // e.g., 32 for numModels==5
+    int masks[MAX_MODELS]; // 0001 0010 0100 1000, etc.  
+    int currentPermutationIndex; // one of switchIndexes
+    int modelSwitches[MAX_MODELS]; // = mask[i] applied to currentPermutationIndex
 } permutationType;
 
 typedef struct {
     fileType forecastTableFile;
     fileType warningsFile;
-    fileType descriptionFile;
+    fileType configFile;
     fileType weightTableFile;
     fileType modelsAttendenceFile;
     fileType summaryFile;
@@ -153,10 +167,11 @@ typedef struct {
     fileType modelMixFileInput;
     fileType optimizedTSFile;
     fileType correctionStatsFile;
-    columnType columnInfo[MAX_MODELS * MAX_HOURS_AHEAD];
+    modelType modelInfo[MAX_MODELS * MAX_HOURS_AHEAD];
     modelRunType hoursAheadGroup[MAX_HOURS_AHEAD];
     modelRunType hoursAfterSunriseGroup[MAX_HOURS_AFTER_SUNRISE][MAX_HOURS_AFTER_SUNRISE];
     int numColumnInfoEntries;
+    int numModelRuns;
     int numModels;
     int numContribModels;
     int numHeaderFields;
@@ -166,9 +181,11 @@ typedef struct {
     int inPhase1;
     int maxModelIndex;
     int numTotalSamples;
-    timeSeriesType *timeSeries;
     char *siteGroup;
     char *siteName;
+    char *inputDirectory;
+    fileType inputFiles[1024];
+    int numInputFiles;
     char *outputDirectory;
     double lat, lon;
     int zenithCol, groundGHICol, groundDNICol, groundDiffuseCol, groundTempCol, groundWindCol, satGHICol, clearskyGHICol, startModelsColumnNumber;
@@ -179,12 +196,15 @@ typedef struct {
     char multipleSites;
     int startHourLowIndex, startHourHighIndex;
     int numSites;
+    // each model and time horizon now has it's own time series
+    // fci->nwpTimeSeries[hoursAheadIndex].
+    nwpTimeSeriesType nwpTimeSeries[MAX_HOURS_AHEAD];  // something like 7 * 200
     siteType allSiteInfo[MAX_SITES];
     siteType *thisSite; // points to one of the above registered sites
     int numInputRecords;
     int numDaylightRecords;
     char runWeightedErrorAnalysis;
-    char *forecastHeaderLine;
+    char *forecastHeaderLine1, *forecastHeaderLine2;
     char *delimiter;
     int forecastLineNumber;
     char runOptimizer, skipPhase2;
@@ -221,5 +241,6 @@ void initPermutationSwitches(forecastInputType *fci);
 void setPermutationSwitches(forecastInputType *fci, int permutationIndex);
 int isContributingModel(modelStatsType *model);
 void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int permutationIndex);
-#endif	/* FORECASTOPT_H */
+timeSeriesType *getNextTimeSeriesSample(forecastInputType *fci, int hoursAheadIndex);
+#endif /* FORECASTOPT_H */
 

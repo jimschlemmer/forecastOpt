@@ -552,6 +552,7 @@ int sunIsUpPoint(ae_pack *aep, dateTimeType *dt)
 // ambiguous (in terms of radian to degree conversions).  With the below
 // code, I use a tried and true ephemeris calculator (sunae) along with 
 // an iterative method to home in on the correct hour/minute of sunrise.
+
 dateTimeType calculateSunrise(dateTimeType *dt, double lat, double lon)
 {
     dateTimeType sunrise = *dt;
@@ -604,4 +605,18 @@ dateTimeType calculateSunrise(dateTimeType *dt, double lat, double lon)
     setObsTime(&sunrise);  // make sure obs_time (utime) is set)
     
     return sunrise;
+}
+
+double calculateZenithAngle(dateTimeType *dt, double lat, double lon)
+{
+    ae_pack aep;
+    b
+    aep.lat = lat;
+    aep.lon = lon;
+    aep.year = dt->year; //tm->tm_year+1900;
+    aep.doy = dt->doy;// tm->tm_yday+1;
+    aep.hour = 0;  // go back to previous day's hour 23 in case sunrise is at GMT midnight which is likely to be somewhere in Asia.
+    sunae(&aep);
+    
+    return (aep.zen);
 }

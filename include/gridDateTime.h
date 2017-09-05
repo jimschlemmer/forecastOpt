@@ -63,6 +63,7 @@ int sunIsUpPoint(ae_pack *aep, dateTimeType *dt);
 int stringToDt(dateTimeType *dt, char *dateStr);
 void resetDateTimeFromObsTime(dateTimeType *dt, time_t obs_time);
 dateTimeType calculateSunrise(dateTimeType *dt, double lat, double lon);
+double calculateZenithAngle(dateTimeType *dt, double lat, double lon);
 
 #endif        /* _gredDateTime_H */
 
