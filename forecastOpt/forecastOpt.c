@@ -57,7 +57,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     //static char tabDel[32];
     //sprintf(tabDel, "%c", 9);  // ascii 9 = TAB
 
-    while((c = getopt(argC, argV, "b:kpfa:c:dto:s:HhvVr:mw:i:")) != EOF) {
+    while((c = getopt(argC, argV, "b:kpfa:c:dto:s:HhvSVr:mw:i:")) != EOF) {
         switch(c) {
             case 'd':
             {
@@ -153,6 +153,13 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                 fci->doModelPermutations = False;
                 break;
             }
+            case 'S':
+            {
+                fci->useSatelliteDataAsRef = True;
+                fci->groundGHICol = 6;
+                fci->satGHICol = 5;
+                break;
+            }
             default: return False;
         }
     }
@@ -173,11 +180,12 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
 void help(void)
 {
     version();
-    printf("usage: %s [-dsmpkvh] [-r beginHourIndex,endHourIndex] [-a begin,end] [-o outputDir] [-b divisions] -c configFile forecastFile\n", Progname);
+    printf("usage: %s [-dsmpkSvh] [-r beginHourIndex,endHourIndex] [-a begin,end] [-o outputDir] [-b divisions] -c configFile forecastFile\n", Progname);
     printf("where: -d = comma separated input [TAB]\n");
     printf("       -s maxHours = set max hours after sunrise\n");
     printf("       -m = input data file contains multiple sites (concatenated)\n");
     printf("       -k = skip phase 2 optimization\n");
+    printf("       -S = use satellite model data as reference\n");
     printf("       -r beginHourIndex,endHourIndex = specify which hour ahead indexes to start and end with\n");
     printf("       -a begin,end = specify begin and end dates in YYYYMMDD,YYYYMMDD format\n");
     printf("       -o outputDir = specify where output files go\n");
@@ -231,12 +239,12 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
     int hoursAheadIndex, hoursAfterSunriseIndex;
 
     if(fci->runHoursAfterSunrise) {
-        for(hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
+        for(hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
             int numHASwithData = 0;
             for(hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
                 setModelSwitches(fci, hoursAheadIndex, hoursAfterSunriseIndex, permutationIndex);
-                fprintf(stderr, "\n############ Running for hour ahead %d, hour after sunrise %d\n\n",
-                        fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAhead, fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAfterSunrise);
+                fprintf(stderr, "############ Running for HA/HAS/permIndex = %d/%d/%d\n\n",
+                        fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAhead, fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAfterSunrise, permutationIndex);
                 computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex);
                 dumpNumModelsReportingTable(fci);
                 printRmseTableHour(fci, hoursAheadIndex, hoursAfterSunriseIndex);

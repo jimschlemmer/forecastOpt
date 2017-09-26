@@ -28,12 +28,6 @@ extern "C" {
 
 void initForecastInfo(forecastInputType *fci);
 void incrementTimeSeries(forecastInputType *fci);
-// new file-based data scanning functions
-int  readNWPforecastData(forecastInputType *fci);
-int  readSurfaceData(forecastInputType *fci);
-int  readV3data(forecastInputType *fci);
-int  readClearskyData(forecastInputType *fci);
-//
 int  readForecastData(forecastInputType *fci);
 int  readDataFromLine(forecastInputType *fci, timeSeriesType *thisSample, char *fields[], int numFields);
 int  parseDateTime(forecastInputType *fci, dateTimeType *dt, char **fields, int numFields);
@@ -67,5 +61,8 @@ void dumpModelMix_EachHAS_HAxModel(forecastInputType *fci);
 int getHoursAheadIndex(forecastInputType *fci, int hoursAhead);
 int getHoursAfterSunriseIndex(forecastInputType *fci, int hoursAfterSunrise);
 //int getModelIndex(forecastInputType *fci, char *modelName);
-void parseNwpHeaderLine(forecastInputType *fci);
+void parseNwpHeaderLine(forecastInputType *fci, char *filename);
 int getModelIndex(forecastInputType *fci, char *modelName);
+timeSeriesType *allocTimeSeriesSample(forecastInputType *fci, int hoursAheadIndex);
+timeSeriesType *findTimeSeriesSample(forecastInputType *fci, dateTimeType *dt);
+char *validString(validType code);

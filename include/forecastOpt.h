@@ -51,8 +51,8 @@ extern "C" {
 #define MIN_GHI_VAL 5
 
 // file-level character reading limits
-#define MAX_FIELDS 2048
-#define LINE_LENGTH MAX_FIELDS * 64  
+#define MAX_FIELDS 64
+#define LINE_LENGTH 1024  
 
 // header strings for output .csv files that possibly need to be scanned for later
 #define WEIGHT_1_STR "weight 1"
@@ -67,17 +67,29 @@ typedef enum {
     MKunset, regular
 } modelKindType;
 
+typedef enum {  // OK is valid; others are rejection codes
+    zenith, groundLow, satLow, nwpLow, notHAS, OK
+} validType ;
+
+typedef struct {
+    double sumModel_Ground, sumAbs_Model_Ground, sumModel_Ground_2;
+    double sumModel_Sat, sumAbs_Model_Sat, sumModel_Sat_2;
+    double mbe, mae, rmse;
+    double mbePct, maePct, rmsePct;    
+} errorStatsType;
+
 typedef struct {
     int modelInfoIndex;
     char *modelName; // short cut to modelName below
     double sumModel_Ground, sumAbs_Model_Ground, sumModel_Ground_2;
+    double sumModel_Sat, sumAbs_Model_Sat, sumModel_Sat_2;
     double mbe, mae, rmse;
     double mbePct, maePct, rmsePct;
     int weight; // used for current calculation
     int optimizedWeightPhase1; // the value associated with the minimized RMSE for all models in pass 1
     int optimizedWeightPhase2; // the value associated with the minimized RMSE for all models in pass 2
     int N;
-    char isActive, isOn, isReference, tooMuchDataMissing;
+    char isActive, maskSwitchOn, isReference, tooMuchDataMissing, isContributingModel;
     long long powerOfTen;
 } modelStatsType;
 
@@ -97,18 +109,19 @@ typedef struct {
 
 typedef struct {
     double modelGHI[MAX_MODELS];
+    validType groupIsValid;
+    double ktSatGHI, ktOptimizedGHI, optimizedGHI, correctedOptimizedGHI;
 } modelDataType;
 
+// for each HA there is an NWP input file with the time series data
 typedef struct {
     dateTimeType dateTime;
-    double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI, optimizedGHI;
-    double ktSatGHI, ktOptimizedGHI, correctedOptimizedGHI;
-    modelDataType forecastData[MAX_HOURS_AHEAD];
-    double nwpData[MAX_MODELS];
-    char isValid, sunIsUp;
+    double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI;
+    modelDataType forecastData[MAX_HOURS_AHEAD];  // for a given dateTime we will have many HAs
+    char sunIsUp;
     dateTimeType sunrise;
-    int hoursAfterSunrise;
-    int hoursAheadIndex;
+    int hoursAfterSunrise; 
+    int hoursAheadIndex; 
     char *siteName; // useful for multiple site runs
 } timeSeriesType;
 
@@ -116,6 +129,8 @@ typedef struct {
     char *modelName;
     char *modelDescription;
     int inputColumnNumber;
+    int numGood, numMissing;
+    double percentMissing;
     int maxhoursAhead;
     int hoursAheadIndex;
     int modelIndex;
@@ -123,6 +138,7 @@ typedef struct {
 
 // this data structure describes a single T/S file with surface, v3, NWP and clearsky data
 // we'll have one of these for each such file, so it's number of NWPs * number of HAs.
+
 typedef struct {
     modelType modelInfo;
     int hoursAhead, modelIndex, hoursAheadIndex;
@@ -171,7 +187,7 @@ typedef struct {
     modelRunType hoursAheadGroup[MAX_HOURS_AHEAD];
     modelRunType hoursAfterSunriseGroup[MAX_HOURS_AFTER_SUNRISE][MAX_HOURS_AFTER_SUNRISE];
     int numColumnInfoEntries;
-    int numModelRuns;
+    int numModelsRegistered;
     int numModels;
     int numContribModels;
     int numHeaderFields;
@@ -196,19 +212,21 @@ typedef struct {
     char multipleSites;
     int startHourLowIndex, startHourHighIndex;
     int numSites;
+    timeSeriesType *timeSeries;
     // each model and time horizon now has it's own time series
     // fci->nwpTimeSeries[hoursAheadIndex].
-    nwpTimeSeriesType nwpTimeSeries[MAX_HOURS_AHEAD];  // something like 7 * 200
+    // nwpTimeSeriesType nwpTimeSeries[MAX_HOURS_AHEAD]; // something like 7 * 200
     siteType allSiteInfo[MAX_SITES];
     siteType *thisSite; // points to one of the above registered sites
     int numInputRecords;
     int numDaylightRecords;
     char runWeightedErrorAnalysis;
-    char *forecastHeaderLine1, *forecastHeaderLine2;
+    char forecastHeaderLine1[LINE_LENGTH], forecastHeaderLine2[LINE_LENGTH];
     char *delimiter;
     int forecastLineNumber;
     char runOptimizer, skipPhase2;
     char runHoursAfterSunrise;
+    char useSatelliteDataAsRef;
     int maxHoursAfterSunrise;
     char gotConfigFile, gotForecastFile;
     char doModelPermutations;
@@ -216,10 +234,10 @@ typedef struct {
 } forecastInputType;
 
 int computeModelRMSE(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
-char *getGenericModelName(forecastInputType *fci, int modelIndex);
+char *getModelName(forecastInputType *fci, int modelIndex);
 int getMaxHoursAhead(forecastInputType *fci, int modelIndex);
 void runOptimizer(forecastInputType *fci, int hourIndex);
-int filterHourlyForecastData(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
+int filterForecastData(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 void clearHourlyErrorFields(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
 int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);

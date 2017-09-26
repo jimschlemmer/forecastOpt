@@ -25,7 +25,7 @@ void runOptimizer(forecastInputType *fci, int hoursAheadIndex)
     // intialize things
     //clearHourlyErrorFields(fci, hoursAheadIndex);   
     
-    if(!filterHourlyForecastData(fci, hoursAheadIndex, -1))
+    if(!filterForecastData(fci, hoursAheadIndex, -1))
         return;
        
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
@@ -164,7 +164,7 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     // intialize things
     // clearHourlyErrorFields(fci, hoursAheadIndex);   no,no
     
-//    if(!filterHourlyForecastData(fci, hoursAheadIndex, hoursAfterSunriseIndex))
+//    if(!filterForecastData(fci, hoursAheadIndex, hoursAfterSunriseIndex))
 //        return False;
        
     //int hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
@@ -448,7 +448,7 @@ void dumpWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunr
 
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
         if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {           
-            fprintf(stderr, "\t%-35s = %-8d\n", getGenericModelName(fci, modelIndex), phase < 2 ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 : modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2);
+            fprintf(stderr, "\t%-35s = %-8d\n", getModelName(fci, modelIndex), phase < 2 ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 : modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2);
         }
     }    
     fprintf(stderr, "\t\n[Phase %d RMSE = %.2f%%]\n\n", phase, (phase < 2 ? modelRun->optimizedRMSEphase1 : modelRun->optimizedRMSEphase2) * 100);   
