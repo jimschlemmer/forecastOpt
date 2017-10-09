@@ -242,6 +242,8 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
         for(hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
             int numHASwithData = 0;
             for(hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+                if(hoursAheadIndex == 16)
+                    fprintf(stderr, "here");
                 setModelSwitches(fci, hoursAheadIndex, hoursAfterSunriseIndex, permutationIndex);
                 fprintf(stderr, "############ Running for HA/HAS/permIndex = %d/%d/%d\n\n",
                         fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAhead, fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex].hoursAfterSunrise, permutationIndex);
@@ -250,6 +252,7 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
                 printRmseTableHour(fci, hoursAheadIndex, hoursAfterSunriseIndex);
                 printHourlySummary(fci, hoursAheadIndex, hoursAfterSunriseIndex);
 
+                // This is the actual optimizer call
                 numHASwithData += runOptimizerNested(fci, hoursAheadIndex, hoursAfterSunriseIndex);
 
                 fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);

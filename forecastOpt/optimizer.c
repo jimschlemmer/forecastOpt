@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include "forecastOpt.h"
 
+
+
 void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex);
 int sumWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex);
 void dumpWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunrise, int phase);
@@ -65,9 +67,9 @@ void runOptimizer(forecastInputType *fci, int hoursAheadIndex)
 //                    fprintf(stderr, "\n");
 
         if(weightSum >= 0.9 && weightSum <= 1.1) {
-            computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, -1);
-            if(modelData->weightedModelStats.rmsePct < minRmse) {
-                minRmse = modelData->weightedModelStats.rmsePct;
+            computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, -1, GROUND_REF);
+            if(modelData->weightedModelStatsVsGround.rmsePct < minRmse) {
+                minRmse = modelData->weightedModelStatsVsGround.rmsePct;
 
                 fprintf(stderr, "[%lld] @ %s new low RMSE =%.3f%% wts=", counter, getElapsedTime(start_t), minRmse * 100);
                 for(i=0; i < fci->numModels; i++) {
@@ -116,11 +118,11 @@ int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
     double minRmse;
     
     if(fci->inPhase1) {
-        minRmse = modelRun->optimizedRMSEphase1;
+        minRmse = modelRun->optimizedPctRMSEphase1;
         modelRun->phase1SumWeightsCalls++; 
     }
     else {
-        minRmse = modelRun->optimizedRMSEphase2;
+        minRmse = modelRun->optimizedPctRMSEphase2;
         modelRun->phase2SumWeightsCalls++;
     }
     
@@ -132,10 +134,19 @@ int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
             modelRun->phase1RMSEcalls++; 
         else              
             modelRun->phase2RMSEcalls++;
-        computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); 
-        if(modelRun->weightedModelStats.rmsePct < minRmse) { 
-            if(fci->inPhase1) modelRun->optimizedRMSEphase1 =  modelRun->weightedModelStats.rmsePct;
-            else              modelRun->optimizedRMSEphase2 =  modelRun->weightedModelStats.rmsePct;
+        
+        computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex, USE_GROUND_REF); 
+        
+        if(modelRun->weightedModelStatsVsGround.rmsePct < minRmse) { 
+            if(fci->inPhase1) {
+                modelRun->optimizedPctRMSEphase1 =  modelRun->weightedModelStatsVsGround.rmsePct;
+                modelRun->optimizedRMSEphase1 = modelRun->weightedModelStatsVsGround.rmse;
+            }
+            else {
+                //fprintf(stderr, "[HA%d/HAS%d] RMSE=%.0f, %%RMSE=%.4f\n", hoursAheadIndex+1, hoursAfterSunriseIndex+1, modelRun->weightedModelStatsVsGround.rmse, modelRun->weightedModelStatsVsGround.rmsePct);
+                modelRun->optimizedPctRMSEphase2 =  modelRun->weightedModelStatsVsGround.rmsePct;
+                modelRun->optimizedRMSEphase2 = modelRun->weightedModelStatsVsGround.rmse;
+            }
             saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex); 
         } 
     }
@@ -143,9 +154,9 @@ int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
 }
 
 // Macro that's a bit lengthy but which makes the nested loop more readable
-#define runRMSE() weightSum = sumWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex); modelRun->phase1SumWeightsCalls++; if(weightSum >= fci->weightSumLowCutoff && weightSum <= fci->weightSumHighCutoff) { modelRun->phase1RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(modelRun->weightedModelStats.rmsePct < MinRmse) { MinRmse = modelRun->weightedModelStats.rmsePct; saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex); } }
-#define runRMSENoSumCheck() modelRun->phase1RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(modelRun->weightedModelStats.rmsePct < MinRmse) { MinRmse = modelRun->weightedModelStats.rmsePct; saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex); }
-#define runRMSE_2() weightSum = sumWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex); modelRun->phase2SumWeightsCalls++; if(weightSum >= 97 && weightSum <= 103) { modelRun->phase2RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(modelRun->weightedModelStats.rmsePct < MinRmse) { MinRmse = modelRun->weightedModelStats.rmsePct; saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex); } }
+//#define runRMSE() weightSum = sumWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex); modelRun->phase1SumWeightsCalls++; if(weightSum >= fci->weightSumLowCutoff && weightSum <= fci->weightSumHighCutoff) { modelRun->phase1RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(modelRun->weightedModelStatsVsGround.rmsePct < MinRmse) { MinRmse = modelRun->weightedModelStatsVsGround.rmsePct; saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex); } }
+//#define runRMSENoSumCheck() modelRun->phase1RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(modelRun->weightedModelStatsVsGround.rmsePct < MinRmse) { MinRmse = modelRun->weightedModelStatsVsGround.rmsePct; saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex); }
+//#define runRMSE_2() weightSum = sumWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex); modelRun->phase2SumWeightsCalls++; if(weightSum >= 97 && weightSum <= 103) { modelRun->phase2RMSEcalls++; computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex); if(modelRun->weightedModelStatsVsGround.rmsePct < MinRmse) { MinRmse = modelRun->weightedModelStatsVsGround.rmsePct; saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex); } }
 
 #define CheckWeights(n) { if(((numActiveModels - n) > 3) && weightSumLimitExceeded(fci, hoursAheadIndex, hoursAfterSunriseIndex, n)) break; }
 #define RunRmse() { runRMSEwithWeights(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex); continue; }
@@ -192,7 +203,7 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
 */
     //fci->numDivisions = 5;
     fci->increment1 = 100 / fci->numDivisions;
-    modelRun->optimizedRMSEphase1 = 1000;
+    modelRun->optimizedPctRMSEphase1 = 1000;
 #ifdef NESTED_OPT_DEBUG
     fprintf(stderr, "======= numDivisions = %d\n", fci->numDivisions);
     fprintf(stderr, "======= increment1 = %d\n\n", fci->increment1);
@@ -300,7 +311,7 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     fci->inPhase1 = False;
 
 #ifdef NESTED_OPT_DEBUG
-    fprintf(stderr, "\n=== Elapsed time for phase 1: %s [RMSE calls = %ld] [RMSE = %.2f%%]\n", getElapsedTime(Start_t), modelRun->phase1RMSEcalls, modelRun->optimizedRMSEphase1 * 100);
+    fprintf(stderr, "\n=== Elapsed time for phase 1: %s [RMSE calls = %ld] [RMSE = %.2f%%]\n", getElapsedTime(Start_t), modelRun->phase1RMSEcalls, modelRun->optimizedPctRMSEphase1 * 100);
 #endif    
     dumpWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, 1);
 
@@ -310,8 +321,9 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
             modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 = modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1;
         }  
     }
-    modelRun->optimizedRMSEphase2 = modelRun->optimizedRMSEphase1;  // start with phase 1 RMSE; if we can't improve upon that stick with it
-
+    modelRun->optimizedPctRMSEphase2 = modelRun->optimizedPctRMSEphase1;  // start with phase 1 RMSE; if we can't improve upon that stick with it
+    modelRun->optimizedRMSEphase2 = modelRun->optimizedRMSEphase1;
+    
     // bail out if we're only doing the first phase
     if(fci->skipPhase2 || numActiveModels == 1) {  // if we're running only one model, don't need to refine
         return True;
@@ -427,7 +439,7 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     }
         
 #ifdef NESTED_OPT_DEBUG
-    fprintf(stderr, "\n=== Elapsed time for phase 2: %s [RMSE calls = %ld] [RMSE = %.2f%%]\n", getElapsedTime(Start_t), modelRun->phase2RMSEcalls, modelRun->optimizedRMSEphase2 * 100);
+    fprintf(stderr, "\n=== Elapsed time for phase 2: %s [RMSE calls = %ld] [RMSE = %.2f%%]\n", getElapsedTime(Start_t), modelRun->phase2RMSEcalls, modelRun->optimizedPctRMSEphase2 * 100);
 #endif    
     dumpWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, 2);
     
@@ -451,7 +463,7 @@ void dumpWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunr
             fprintf(stderr, "\t%-35s = %-8d\n", getModelName(fci, modelIndex), phase < 2 ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 : modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2);
         }
     }    
-    fprintf(stderr, "\t\n[Phase %d RMSE = %.2f%%]\n\n", phase, (phase < 2 ? modelRun->optimizedRMSEphase1 : modelRun->optimizedRMSEphase2) * 100);   
+    fprintf(stderr, "\t\n[Phase %d RMSE = %.2f%%]\n\n", phase, (phase < 2 ? modelRun->optimizedPctRMSEphase1 : modelRun->optimizedPctRMSEphase2) * 100);   
 }
 
 
@@ -463,7 +475,7 @@ void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfte
 
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex] : &fci->hoursAheadGroup[hoursAheadIndex];    
 
-    minRmse = modelRun->weightedModelStats.rmsePct;
+    minRmse = modelRun->weightedModelStatsVsGround.rmsePct;
 
     if(fci->verbose) {
         if(fci->inPhase1)
@@ -489,9 +501,9 @@ void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfte
         fprintf(stderr, "\n");
     
     if(fci->inPhase1)
-        modelRun->optimizedRMSEphase1 = minRmse;
+        modelRun->optimizedPctRMSEphase1 = minRmse;
     else
-        modelRun->optimizedRMSEphase2 = minRmse;
+        modelRun->optimizedPctRMSEphase2 = minRmse;
 }
 
 //#define DUMP_ALL_WEIGHTS

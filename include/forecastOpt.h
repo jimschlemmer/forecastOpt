@@ -61,6 +61,9 @@ extern "C" {
 #define MIN_IRR -25
 #define MAX_IRR 1500
 
+#define USE_GROUND_REF 1
+#define USE_SATELLITE_REF 0
+
 //#define isContributingModel(model) (model.isActive && !model.isReference)
 
 typedef enum {
@@ -70,13 +73,6 @@ typedef enum {
 typedef enum {  // OK is valid; others are rejection codes
     zenith, groundLow, satLow, nwpLow, notHAS, OK
 } validType ;
-
-typedef struct {
-    double sumModel_Ground, sumAbs_Model_Ground, sumModel_Ground_2;
-    double sumModel_Sat, sumAbs_Model_Sat, sumModel_Sat_2;
-    double mbe, mae, rmse;
-    double mbePct, maePct, rmsePct;    
-} errorStatsType;
 
 typedef struct {
     int modelInfoIndex;
@@ -100,9 +96,10 @@ typedef struct {
     double meanMeasuredGHI;
     modelStatsType satModelStats;
     modelStatsType hourlyModelStats[MAX_MODELS];
-    modelStatsType weightedModelStats;
-    double optimizedRMSEphase1;
-    double optimizedRMSEphase2;
+    modelStatsType weightedModelStatsVsGround;
+    modelStatsType weightedModelStatsVsSat;
+    double optimizedRMSEphase1, optimizedPctRMSEphase1;
+    double optimizedRMSEphase2, optimizedPctRMSEphase2;
     long phase1RMSEcalls, phase2RMSEcalls, phase1SumWeightsCalls, phase2SumWeightsCalls;
     double correctionVarA, correctionVarB;
 } modelRunType;
@@ -110,7 +107,7 @@ typedef struct {
 typedef struct {
     double modelGHI[MAX_MODELS];
     validType groupIsValid;
-    double ktSatGHI, ktOptimizedGHI, optimizedGHI, correctedOptimizedGHI;
+    double ktSatGHI, ktTargetNWP, ktOptimizedGHI, optimizedGHI, correctedOptimizedGHI;
 } modelDataType;
 
 // for each HA there is an NWP input file with the time series data
@@ -185,7 +182,7 @@ typedef struct {
     fileType correctionStatsFile;
     modelType modelInfo[MAX_MODELS * MAX_HOURS_AHEAD];
     modelRunType hoursAheadGroup[MAX_HOURS_AHEAD];
-    modelRunType hoursAfterSunriseGroup[MAX_HOURS_AFTER_SUNRISE][MAX_HOURS_AFTER_SUNRISE];
+    modelRunType hoursAfterSunriseGroup[MAX_HOURS_AHEAD][MAX_HOURS_AFTER_SUNRISE];
     int numColumnInfoEntries;
     int numModelsRegistered;
     int numModels;
@@ -204,7 +201,7 @@ typedef struct {
     int numInputFiles;
     char *outputDirectory;
     double lat, lon;
-    int zenithCol, groundGHICol, groundDNICol, groundDiffuseCol, groundTempCol, groundWindCol, satGHICol, clearskyGHICol, startModelsColumnNumber;
+    int groundGHICol, groundDNICol, satGHICol, clearskyGHICol, ktModelColumn, startModelsColumnNumber;
     dateTimeType startDate, endDate;
     char *startDateStr, *endDateStr;
     char verbose;
@@ -228,6 +225,7 @@ typedef struct {
     char runHoursAfterSunrise;
     char useSatelliteDataAsRef;
     int maxHoursAfterSunrise;
+    int maxHoursAheadIndex;
     char gotConfigFile, gotForecastFile;
     char doModelPermutations;
     permutationType modelPermutations;
@@ -242,7 +240,7 @@ void clearHourlyErrorFields(forecastInputType *fci, int hourIndex, int hoursAfte
 int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
 int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
-int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
+int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex,  int useGroundReference);
 int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex);
 void fatalError(char *functName, char *errStr, char *file, int linenumber);
 void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);

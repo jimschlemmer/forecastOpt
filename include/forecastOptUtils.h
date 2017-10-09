@@ -32,7 +32,6 @@ int  readForecastData(forecastInputType *fci);
 int  readDataFromLine(forecastInputType *fci, timeSeriesType *thisSample, char *fields[], int numFields);
 int  parseDateTime(forecastInputType *fci, dateTimeType *dt, char **fields, int numFields);
 int  parseHourIndexes(forecastInputType *fci, char *optarg);
-void scanHeaderLine(forecastInputType *fci);
 int  parseArgs(forecastInputType *fci, int argC, char **argV);
 void registerModelInfo(forecastInputType *fci, char *modelName, char *modelDescription, int isReference, int isForecast, int maxHoursAhead);
 void getNumberOfHoursAhead(forecastInputType *fci, char *origLine);
