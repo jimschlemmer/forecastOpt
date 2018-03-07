@@ -46,9 +46,10 @@ extern "C" {
 
 #define MAX_MODELS 10
 #define MAX_SITES 16
-#define MAX_HOURS_AHEAD 250
+#define MAX_HOURS_AHEAD 48
 #define MAX_HOURS_AFTER_SUNRISE 16
 #define MIN_GHI_VAL 5
+#define MAX_KT_BINS 10
 
 // file-level character reading limits
 #define MAX_FIELDS 64
@@ -71,11 +72,10 @@ typedef enum {
 } modelKindType;
 
 typedef enum {  // OK is valid; others are rejection codes
-    zenith, groundLow, satLow, nwpLow, notHAS, OK
+    zenith, groundLow, satLow, nwpLow, notHAS, ktOutOfRange, OK
 } validType ;
 
 typedef struct {
-    int modelInfoIndex;
     char *modelName; // short cut to modelName below
     double sumModel_Ground, sumAbs_Model_Ground, sumModel_Ground_2;
     double sumModel_Sat, sumAbs_Model_Sat, sumModel_Sat_2;
@@ -107,18 +107,18 @@ typedef struct {
 typedef struct {
     double modelGHI[MAX_MODELS];
     validType groupIsValid;
-    double ktSatGHI, ktTargetNWP, ktOptimizedGHI, optimizedGHI, correctedOptimizedGHI;
-} modelDataType;
+    double ktSatGHI, ktTargetNWP, ktV4, optimizedKt, optimizedGHI, correctedOptimizedGHI;
+    int ktIndex;
+} forecastDataType;
 
 // for each HA there is an NWP input file with the time series data
 typedef struct {
     dateTimeType dateTime;
     double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI;
-    modelDataType forecastData[MAX_HOURS_AHEAD];  // for a given dateTime we will have many HAs
+    forecastDataType forecastData[MAX_HOURS_AHEAD];  // for a given dateTime we will have many HAs
     char sunIsUp;
     dateTimeType sunrise;
     int hoursAfterSunrise; 
-    int hoursAheadIndex; 
     char *siteName; // useful for multiple site runs
 } timeSeriesType;
 
@@ -138,7 +138,7 @@ typedef struct {
 
 typedef struct {
     modelType modelInfo;
-    int hoursAhead, modelIndex, hoursAheadIndex;
+    int hoursAhead, hoursAheadIndex;
     timeSeriesType *timeSeries;
     int numTimeSeriesSamples;
     int numGood, numMissing;
@@ -150,6 +150,7 @@ typedef struct {
 typedef struct {
     int numModels;
     char *siteName;
+    double lat, lon;
     char *modelNames[MAX_MODELS];
     int maxHoursAhead[MAX_MODELS];
 } siteType;
@@ -182,7 +183,9 @@ typedef struct {
     fileType correctionStatsFile;
     modelType modelInfo[MAX_MODELS * MAX_HOURS_AHEAD];
     modelRunType hoursAheadGroup[MAX_HOURS_AHEAD];
-    modelRunType hoursAfterSunriseGroup[MAX_HOURS_AHEAD][MAX_HOURS_AFTER_SUNRISE];
+    //modelRunType hoursAfterSunriseGroup[MAX_HOURS_AHEAD][MAX_HOURS_AFTER_SUNRISE][MAX_KT_BINS];
+    modelRunType ***hoursAfterSunriseGroup;
+    int numKtBins;
     int numColumnInfoEntries;
     int numModelsRegistered;
     int numModels;
@@ -194,13 +197,11 @@ typedef struct {
     int inPhase1;
     int maxModelIndex;
     int numTotalSamples;
-    char *siteGroup;
-    char *siteName;
+    int siteIndex;
     char *inputDirectory;
     fileType inputFiles[1024];
     int numInputFiles;
     char *outputDirectory;
-    double lat, lon;
     int groundGHICol, groundDNICol, satGHICol, clearskyGHICol, ktModelColumn, startModelsColumnNumber;
     dateTimeType startDate, endDate;
     char *startDateStr, *endDateStr;
@@ -229,24 +230,22 @@ typedef struct {
     char gotConfigFile, gotForecastFile;
     char doModelPermutations;
     permutationType modelPermutations;
+    char doKtBootstrap;
 } forecastInputType;
 
-int computeModelRMSE(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 char *getModelName(forecastInputType *fci, int modelIndex);
 int getMaxHoursAhead(forecastInputType *fci, int modelIndex);
 void runOptimizer(forecastInputType *fci, int hourIndex);
-int filterForecastData(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
-void clearHourlyErrorFields(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
-int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
-int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
-int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex,  int useGroundReference);
+int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex, int ktIndex);
+int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex, int ktIndex);
+int computeModelRMSE(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
+int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex,  int ktIndex, int useGroundReference);
 int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex);
 void fatalError(char *functName, char *errStr, char *file, int linenumber);
 void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);
-int runOptimizerNested(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
+int runOptimizerNested(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex, int ktIndex);
 char *getElapsedTime(time_t start_t);
-void printHourlySummary(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex);
 void printHoursAheadSummaryCsv(forecastInputType *fci);
 void dumpNumModelsReportingTable(forecastInputType *fci);
 char *genProxySiteName(forecastInputType *fci);
@@ -256,7 +255,10 @@ void genPermutationMatrix(forecastInputType *fci);
 void initPermutationSwitches(forecastInputType *fci);
 void setPermutationSwitches(forecastInputType *fci, int permutationIndex);
 int isContributingModel(modelStatsType *model);
-void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int permutationIndex);
+void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int kitIndex, int permutationIndex);
 timeSeriesType *getNextTimeSeriesSample(forecastInputType *fci, int hoursAheadIndex);
+void printHourlySummary(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
+void setKtIndex(forecastInputType *fci, forecastDataType *thisSample);
+
 #endif /* FORECASTOPT_H */
 

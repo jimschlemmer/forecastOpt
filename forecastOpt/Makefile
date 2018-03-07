@@ -7,8 +7,8 @@ FORECASTLIB = ${LIBDIR}/forecastLib.a
 INC	= -I./${INCLUDEDIR} # -I./include -I/usr/include 
 
 #CC	= cc 
-#CFLAGS = -O3 -march=nocona -rdynamic ${INC} 
-CFLAGS = -g -rdynamic -Wall ${INC} 
+CFLAGS = -O3 -march=nocona -rdynamic ${INC} 
+#CFLAGS = -g -rdynamic -Wall ${INC} 
 #CFLAGS = -g -Wall ${INC} 
 LIBS	= -lm -ldbi -ldl
 OBJS	= forecastOpt.o optimizer.o
