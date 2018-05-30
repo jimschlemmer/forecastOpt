@@ -27,7 +27,7 @@ void runOptimizer(forecastInputType *fci, int hoursAheadIndex)
     // intialize things
     //clearHourlyErrorFields(fci, hoursAheadIndex);   
     
-    if(!filterForecastData(fci, hoursAheadIndex, -1))
+    if(!falterForecastData(fci, hoursAheadIndex, -1))
         return;
        
     for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
@@ -85,15 +85,15 @@ void runOptimizer(forecastInputType *fci, int hoursAheadIndex)
         }
     }
 }
-*/
+ */
 
 char *getElapsedTime(time_t start_t)
 {
     static char timeStr[1024];
-    
+
     time_t now_t = time(NULL);
     time_t elapsed_t = now_t - start_t;
-    
+
     int days = elapsed_t / 86400;
     elapsed_t -= (days * 86400);
     int hours = elapsed_t / 3600;
@@ -101,55 +101,74 @@ char *getElapsedTime(time_t start_t)
     int minutes = elapsed_t / 60;
     elapsed_t -= (minutes * 60);
     int seconds = elapsed_t;
-    
-    if(days > 0) 
+
+    if(days > 0)
         sprintf(timeStr, "%d days, %02d:%02d:%02d", days, hours, minutes, seconds);
-    else 
+    else
         sprintf(timeStr, "%02d:%02d:%02d", hours, minutes, seconds);
 
-    return(timeStr);
+    return (timeStr);
 }
 
 #define MIN_WEIGHT_SUM 0.79
 #define MAX_WEIGHT_SUM 1.21
 
-int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex) {
+int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex)
+{
     int weightSum;
     double minRmse;
-    
+
     if(fci->inPhase1) {
         minRmse = modelRun->optimizedPctRMSEphase1;
-        modelRun->phase1SumWeightsCalls++; 
+        modelRun->phase1SumWeightsCalls++;
     }
     else {
         minRmse = modelRun->optimizedPctRMSEphase2;
         modelRun->phase2SumWeightsCalls++;
     }
+
+//#define REPORT_TRIALS
+
+    weightSum = sumWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
     
-    weightSum = sumWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex); 
-    if(weightSum > fci->weightSumHighCutoff)
+    if(weightSum > fci->weightSumHighCutoff) {
+#ifdef REPORT_TRIALS
+        fprintf(stderr, " SUM_TOO_HIGH\n");
+#endif
         return False;
-    if(weightSum >= fci->weightSumLowCutoff && weightSum <= fci->weightSumHighCutoff) { 
-        if(fci->inPhase1) 
-            modelRun->phase1RMSEcalls++; 
-        else              
-            modelRun->phase2RMSEcalls++;
-        
-        computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, USE_GROUND_REF); 
-        
-        if(modelRun->weightedModelStatsVsGround.rmsePct < minRmse) { 
-            if(fci->inPhase1) {
-                modelRun->optimizedPctRMSEphase1 =  modelRun->weightedModelStatsVsGround.rmsePct;
-                modelRun->optimizedRMSEphase1 = modelRun->weightedModelStatsVsGround.rmse;
-            }
-            else {
-                //fprintf(stderr, "[HA%d/HAS%d] RMSE=%.0f, %%RMSE=%.4f\n", hoursAheadIndex+1, hoursAfterSunriseIndex+1, modelRun->weightedModelStatsVsGround.rmse, modelRun->weightedModelStatsVsGround.rmsePct);
-                modelRun->optimizedPctRMSEphase2 =  modelRun->weightedModelStatsVsGround.rmsePct;
-                modelRun->optimizedRMSEphase2 = modelRun->weightedModelStatsVsGround.rmse;
-            }
-            saveModelWeights(fci,hoursAheadIndex,hoursAfterSunriseIndex, ktIndex); 
-        } 
     }
+    else if(weightSum < fci->weightSumLowCutoff) {
+#ifdef REPORT_TRIALS    
+        fprintf(stderr, " SUM_TOO_LOW\n");
+#endif    
+        return False;
+    }
+
+    // else
+#ifdef REPORT_TRIALS    
+    fprintf(stderr, " RUNNING\n");
+#endif        
+    //if(weightSum >= fci->weightSumLowCutoff && weightSum <= fci->weightSumHighCutoff) {
+    if(fci->inPhase1)
+        modelRun->phase1RMSEcalls++;
+    else
+        modelRun->phase2RMSEcalls++;
+
+    computeHourlyRmseErrorWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, USE_GROUND_REF);
+
+    if(modelRun->weightedModelStatsVsGround.rmsePct < minRmse) {
+        if(fci->inPhase1) {
+            modelRun->optimizedPctRMSEphase1 = modelRun->weightedModelStatsVsGround.rmsePct;
+            modelRun->optimizedRMSEphase1 = modelRun->weightedModelStatsVsGround.rmse;
+        }
+        else {
+            //fprintf(stderr, "[HA%d/HAS%d] RMSE=%.0f, %%RMSE=%.4f\n", hoursAheadIndex+1, hoursAfterSunriseIndex+1, modelRun->weightedModelStatsVsGround.rmse, modelRun->weightedModelStatsVsGround.rmsePct);
+            modelRun->optimizedPctRMSEphase2 = modelRun->weightedModelStatsVsGround.rmsePct;
+            modelRun->optimizedRMSEphase2 = modelRun->weightedModelStatsVsGround.rmse;
+        }
+        saveModelWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+    }
+    //}
     return True;
 }
 
@@ -162,32 +181,33 @@ int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
 #define RunRmse() { runRMSEwithWeights(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex); continue; }
 
 #define NESTED_OPT_DEBUG
+
 int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex)
 {
-    int modelIndex, numActiveModels=0;
-    int i1,i2,i3,i4,i5,i6,i7,i8,i9,i10,i11;
-    modelStatsType *stats[MAX_MODELS+1]; //*stats[1], *stats[2], ...
+    int modelIndex, numActiveModels = 0;
+    int i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11;
+    modelStatsType * stats[MAX_MODELS + 1]; //*stats[1], *stats[2], ...
     modelRunType *modelRun;
 
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
-        
-    fci->inPhase1 = True;    
+
+    fci->inPhase1 = True;
     // intialize things
     // clearHourlyErrorFields(fci, hoursAheadIndex);   no,no
-    
-//    if(!filterForecastData(fci, hoursAheadIndex, hoursAfterSunriseIndex))
-//        return False;
-       
+
+    //    if(!filterForecastData(fci, hoursAheadIndex, hoursAfterSunriseIndex))
+    //        return False;
+
     //int hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
+    for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
         //modelData->hourlyModelStats[modelIndex].isActive = (getMaxHoursAhead(fci, modelIndex) >= hoursAhead);
-        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {
+        if(modelRun->hourlyModelStats[modelIndex].maskSwitchOn) {
             // activeModel[numActiveModels] = modelIndex;   
-            stats[numActiveModels+1] = &modelRun->hourlyModelStats[modelIndex];
+            stats[numActiveModels + 1] = &modelRun->hourlyModelStats[modelIndex];
             numActiveModels++;
-        }  
+        }
     }
-    
+
     if(numActiveModels < 1) {
         fprintf(stderr, "\n!!! Warning: no models active for current hour; no data to work with\n");
         return False;
@@ -196,106 +216,96 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
         fprintf(stderr, "\n!!! Warning: number of active models [%d] > current max of 11\n", numActiveModels);
         return False;
     }
-/*
-    For numDivisions =  5, increment1 = 100/5 = 20 => 0,20,40,60,80,100
-    For numDivisions =  7, increment1 = 100/7 = 14 => 7,14,28,42,56,70,84,98
-    For numDivisions = 10, increment1 = 100/10 = 10 => 10,20,30,40,50,60,70,80,90,100
-*/
-    //fci->numDivisions = 5;
-    fci->increment1 = 100 / fci->numDivisions;
     modelRun->optimizedPctRMSEphase1 = 1000;
-#ifdef NESTED_OPT_DEBUG
-    fprintf(stderr, "======= numDivisions = %d\n", fci->numDivisions);
-    fprintf(stderr, "======= increment1 = %d\n\n", fci->increment1);
-#endif
     modelRun->phase1RMSEcalls = 0;
     modelRun->phase2RMSEcalls = 0;
     modelRun->phase1SumWeightsCalls = 0;
     modelRun->phase2SumWeightsCalls = 0;
+    
     Start_t = time(NULL);
- 
-    for(i1=0; i1<=fci->numDivisions; i1++) {
+
+    for(i1 = 0; i1 <= fci->numDivisions; i1++) {
         stats[1]->weight = i1 * fci->increment1;
-        CheckWeights(1)  // if the sum of weights exceeds fci->weightSumHighCutoff, bail
-        if(numActiveModels == 1) {  // bail out
+        CheckWeights(1) // if the sum of weights exceeds fci->weightSumHighCutoff, bail
+        if(numActiveModels == 1) { // bail out
             stats[1]->weight = 100;
-            RunRmse()  
+            RunRmse()
             break;
         }
-        else {            
-            for(i2=0; i2<=fci->numDivisions; i2++) {
+        else {
+            for(i2 = 0; i2 <= fci->numDivisions; i2++) {
                 stats[2]->weight = i2 * fci->increment1;
-                CheckWeights(2)  // if the sum of weights exceeds fci->weightSumHighCutoff, bail
-                if(numActiveModels == 2) 
-                    RunRmse()  
-                else {            
-                    for(i3=0; i3<=fci->numDivisions; i3++) {  
+                CheckWeights(2) // if the sum of weights exceeds fci->weightSumHighCutoff, bail
+                if(numActiveModels == 2)
+                    RunRmse()
+                else {
+                    for(i3 = 0; i3 <= fci->numDivisions; i3++) {
                         stats[3]->weight = i3 * fci->increment1;
-                        CheckWeights(3)  // this involves a "break" to short circuit current for() loop)
-                        if(numActiveModels == 3) 
-                            RunRmse()   // this involves a "continue" to short circuit the loops below
+                        CheckWeights(3) // this involves a "break" to short circuit current for() loop)
+                        if(numActiveModels == 3)
+                            RunRmse() // this involves a "continue" to short circuit the loops below
                         else {
-                            for(i4=0; i4<=fci->numDivisions; i4++) {           
+                            for(i4 = 0; i4 <= fci->numDivisions; i4++) {
                                 stats[4]->weight = i4 * fci->increment1;
                                 CheckWeights(4)
-                                if(numActiveModels == 4) 
+                                if(numActiveModels == 4)
                                     RunRmse()
                                 else {
-                                    for(i5=0; i5<=fci->numDivisions; i5++) {           
+                                    for(i5 = 0; i5 <= fci->numDivisions; i5++) {
                                         stats[5]->weight = i5 * fci->increment1;
                                         CheckWeights(5)
-                                        if(numActiveModels == 5) 
+                                        if(numActiveModels == 5)
                                             RunRmse()
                                         else {
-                                            for(i6=0; i6<=fci->numDivisions; i6++) {           
+                                            for(i6 = 0; i6 <= fci->numDivisions; i6++) {
                                                 stats[6]->weight = i6 * fci->increment1;
                                                 CheckWeights(6)
-                                                if(numActiveModels == 6) 
+                                                if(numActiveModels == 6)
                                                     RunRmse()
                                                 else {
-                                                    for(i7=0; i7<=fci->numDivisions; i7++) {
+                                                    for(i7 = 0; i7 <= fci->numDivisions; i7++) {
                                                         stats[7]->weight = i7 * fci->increment1;
                                                         CheckWeights(7)
-                                                        if(numActiveModels == 7) 
+                                                        if(numActiveModels == 7)
                                                             RunRmse()
                                                         else {
-                                                            for(i8=0; i8<=fci->numDivisions; i8++) {
+                                                            for(i8 = 0; i8 <= fci->numDivisions; i8++) {
                                                                 stats[8]->weight = i8 * fci->increment1;
                                                                 CheckWeights(8)
-                                                                if(numActiveModels == 8) 
+                                                                if(numActiveModels == 8)
                                                                     RunRmse()
                                                                 else {
-                                                                    for(i9=0; i9<=fci->numDivisions; i9++) {
+                                                                    for(i9 = 0; i9 <= fci->numDivisions; i9++) {
                                                                         stats[9]->weight = i9 * fci->increment1;
                                                                         CheckWeights(9)
-                                                                        if(numActiveModels == 9) 
-                                                                            RunRmse()               
+                                                                        if(numActiveModels == 9)
+                                                                            RunRmse()
                                                                         else {
-                                                                            for(i10=0; i10<=fci->numDivisions; i10++) {   
+                                                                            for(i10 = 0; i10 <= fci->numDivisions; i10++) {
                                                                                 stats[10]->weight = i10 * fci->increment1;
                                                                                 CheckWeights(10)
-                                                                                if(numActiveModels == 10) 
-                                                                                    RunRmse()               
+                                                                                if(numActiveModels == 10)
+                                                                                    RunRmse()
                                                                                 else {
-                                                                                    for(i11=0; i11<=fci->numDivisions; i11++) {   
+                                                                                    for(i11 = 0; i11 <= fci->numDivisions; i11++) {
                                                                                         stats[11]->weight = i11 * fci->increment1;
                                                                                         CheckWeights(11)
-                                                                                        if(numActiveModels == 11) 
-                                                                                            RunRmse()   
-                                                                                        else {                                                                                    
+                                                                                        if(numActiveModels == 11)
+                                                                                            RunRmse()
+                                                                                        else {
                                                                                             fprintf(stderr, "Got to end of nested loop\n");
                                                                                             exit(1);
                                                                                         }
                                                                                     }
                                                                                 }
                                                                             }
-                                                                        } 
+                                                                        }
                                                                     }
-                                                                } 
+                                                                }
                                                             }
-                                                        } 
-                                                    }  // that's 
-                                                }  // a
+                                                        }
+                                                    } // that's 
+                                                } // a
                                             } // lot
                                         } // of
                                     } // right
@@ -316,104 +326,141 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     dumpWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 1);
 
     // copy over optimized weights from phase 1 to phase 2 in case phase 2 doesn't improve on phase 1
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {
+    for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+        if(modelRun->hourlyModelStats[modelIndex].maskSwitchOn) {
             modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 = modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1;
-        }  
+        }
     }
-    modelRun->optimizedPctRMSEphase2 = modelRun->optimizedPctRMSEphase1;  // start with phase 1 RMSE; if we can't improve upon that stick with it
+    modelRun->optimizedPctRMSEphase2 = modelRun->optimizedPctRMSEphase1; // start with phase 1 RMSE; if we can't improve upon that stick with it
     modelRun->optimizedRMSEphase2 = modelRun->optimizedRMSEphase1;
-    
+
     // bail out if we're only doing the first phase
-    if(fci->skipPhase2 || numActiveModels == 1) {  // if we're running only one model, don't need to refine
+    if(fci->skipPhase2 || numActiveModels == 1) { // if we're running only one model, don't need to refine
         return True;
     }
-      
-    // For numDivisions = 5, increment1 = 20 : refinementBase = -10
-    fci->refinementBase = -(fci->increment1);  // might be better off with -(refinementBase/2)
-    fci->increment2 = (2 * fci->increment1/fci->numDivisions);  // 2*20/5 = 8, 2*14/7 = 4, 2*10/10 = 2
+
+
     // save weights in case phase 2 doesn't improve upon phase 1
     Start_t = time(NULL);
-#ifdef NESTED_OPT_DEBUG 
-    fprintf(stderr, "======= numDivisions = %d\n", fci->numDivisions);
-    fprintf(stderr, "======= refinement base = %d\n", fci->refinementBase);
-    fprintf(stderr, "======= increment2 = %d\n\n", fci->increment2);
-#endif 
-    for(i1=0; i1<=fci->numDivisions; i1++) {
+
+    for(i1 = 0; i1 <= fci->numDivisions; i1++) {
         if(stats[1]->optimizedWeightPhase1 > 0) stats[1]->weight = stats[1]->optimizedWeightPhase1 + fci->refinementBase + (i1 * fci->increment2);
-        else { stats[1]->weight = 0; i1 = fci->numDivisions+1; }  // short circuit this since the weight starts at zero
+        else {
+            stats[1]->weight = 0;
+            i1 = fci->numDivisions + 1;
+        } // short circuit this since the weight starts at zero
         //fprintf(stderr, "[%s] Model 0, i1 = %d origWeight = %.1f weight = %.3f\n", getElapsedTime(Start_t), i1, modelRun->hourlyModelStats[0].optimizedWeightPhase1, modelRun->hourlyModelStats[0].weight);
-        for(i2=0; i2<=fci->numDivisions; i2++) {
+        for(i2 = 0; i2 <= fci->numDivisions; i2++) {
             if(stats[2]->optimizedWeightPhase1 > 0) stats[2]->weight = stats[2]->optimizedWeightPhase1 + fci->refinementBase + (i2 * fci->increment2);
-            else { stats[2]->weight = 0; i2 = fci->numDivisions+1; } 
-            CheckWeights(2) 
-            //fprintf(stderr, "[%s] Model 1, i2 = %d origWeight = %.1f weight = %.3f\n", getElapsedTime(Start_t), i2, modelRun->hourlyModelStats[1].optimizedWeightPhase1, modelRun->hourlyModelStats[1].weight);
+            else {
+                stats[2]->weight = 0;
+                i2 = fci->numDivisions + 1;
+            }
+            CheckWeights(2) // have we gone over the weight total limit?
+                    //fprintf(stderr, "[%s] Model 1, i2 = %d origWeight = %.1f weight = %.3f\n", getElapsedTime(Start_t), i2, modelRun->hourlyModelStats[1].optimizedWeightPhase1, modelRun->hourlyModelStats[1].weight);
             if(numActiveModels == 2) {
                 RunRmse()
-            } else {            
-                for(i3=0; i3<=fci->numDivisions; i3++) {  
-                    if(stats[3]->optimizedWeightPhase1 > 0) stats[3]->weight = stats[3]->optimizedWeightPhase1 + fci->refinementBase + (i3 * fci->increment2);            
-                    else { stats[3]->weight = 0; i3 = fci->numDivisions+1; }
+            }
+            else {
+                for(i3 = 0; i3 <= fci->numDivisions; i3++) {
+                    if(stats[3]->optimizedWeightPhase1 > 0) stats[3]->weight = stats[3]->optimizedWeightPhase1 + fci->refinementBase + (i3 * fci->increment2);
+                    else {
+                        stats[3]->weight = 0;
+                        i3 = fci->numDivisions + 1;
+                    }
                     CheckWeights(3)
                     if(numActiveModels == 3) {
-                        RunRmse()               
-                    } else {
-                        for(i4=0; i4<=fci->numDivisions; i4++) {           
-                            if(stats[4]->optimizedWeightPhase1 > 0) stats[4]->weight = stats[4]->optimizedWeightPhase1 + fci->refinementBase + (i4 * fci->increment2);            
-                            else { stats[4]->weight = 0; i4 = fci->numDivisions+1; }
+                        RunRmse()
+                    }
+                    else {
+                        for(i4 = 0; i4 <= fci->numDivisions; i4++) {
+                            if(stats[4]->optimizedWeightPhase1 > 0) stats[4]->weight = stats[4]->optimizedWeightPhase1 + fci->refinementBase + (i4 * fci->increment2);
+                            else {
+                                stats[4]->weight = 0;
+                                i4 = fci->numDivisions + 1;
+                            }
                             CheckWeights(4)
                             if(numActiveModels == 4) {
-                                RunRmse()               
-                            } else {
-                                for(i5=0; i5<=fci->numDivisions; i5++) {           
-                                    if(stats[5]->optimizedWeightPhase1 > 0) stats[5]->weight =  stats[5]->optimizedWeightPhase1 + fci->refinementBase + (i5 * fci->increment2);            
-                                    else { stats[5]->weight = 0; i5 = fci->numDivisions+1; }
+                                RunRmse()
+                            }
+                            else {
+                                for(i5 = 0; i5 <= fci->numDivisions; i5++) {
+                                    if(stats[5]->optimizedWeightPhase1 > 0) stats[5]->weight = stats[5]->optimizedWeightPhase1 + fci->refinementBase + (i5 * fci->increment2);
+                                    else {
+                                        stats[5]->weight = 0;
+                                        i5 = fci->numDivisions + 1;
+                                    }
                                     CheckWeights(5)
                                     if(numActiveModels == 5) {
-                                        RunRmse()               
-                                    } else {
-                                        for(i6=0; i6<=fci->numDivisions; i6++) {           
-                                            if(stats[6]->optimizedWeightPhase1 > 0) stats[6]->weight = stats[6]->optimizedWeightPhase1 + fci->refinementBase + (i6 * fci->increment2);            
-                                            else { stats[6]->weight = 0; i6 = fci->numDivisions+1; }
+                                        RunRmse()
+                                    }
+                                    else {
+                                        for(i6 = 0; i6 <= fci->numDivisions; i6++) {
+                                            if(stats[6]->optimizedWeightPhase1 > 0) stats[6]->weight = stats[6]->optimizedWeightPhase1 + fci->refinementBase + (i6 * fci->increment2);
+                                            else {
+                                                stats[6]->weight = 0;
+                                                i6 = fci->numDivisions + 1;
+                                            }
                                             CheckWeights(6)
                                             if(numActiveModels == 6) {
-                                                RunRmse()               
-                                            } else {
-                                                for(i7=0; i7<=fci->numDivisions; i7++) {
+                                                RunRmse()
+                                            }
+                                            else {
+                                                for(i7 = 0; i7 <= fci->numDivisions; i7++) {
                                                     if(stats[7]->optimizedWeightPhase1 > 0) stats[7]->weight = stats[7]->optimizedWeightPhase1 + fci->refinementBase + (i7 * fci->increment2);
-                                                    else { stats[7]->weight = 0; i7 = fci->numDivisions+1; }
+                                                    else {
+                                                        stats[7]->weight = 0;
+                                                        i7 = fci->numDivisions + 1;
+                                                    }
                                                     CheckWeights(7)
                                                     if(numActiveModels == 7) {
-                                                        RunRmse()               
-                                                    } else {
-                                                        for(i8=0; i8<=fci->numDivisions; i8++) {
-                                                            if(stats[8]->optimizedWeightPhase1 > 0) stats[8]->weight = stats[8]->optimizedWeightPhase1 + fci->refinementBase + (i8 * fci->increment2);           
-                                                            else { stats[8]->weight = 0; i8 = fci->numDivisions+1; }
+                                                        RunRmse()
+                                                    }
+                                                    else {
+                                                        for(i8 = 0; i8 <= fci->numDivisions; i8++) {
+                                                            if(stats[8]->optimizedWeightPhase1 > 0) stats[8]->weight = stats[8]->optimizedWeightPhase1 + fci->refinementBase + (i8 * fci->increment2);
+                                                            else {
+                                                                stats[8]->weight = 0;
+                                                                i8 = fci->numDivisions + 1;
+                                                            }
                                                             CheckWeights(8)
                                                             if(numActiveModels == 8) {
-                                                                RunRmse()               
-                                                            } else {
-                                                                for(i9=0; i9<=fci->numDivisions; i9++) {
+                                                                RunRmse()
+                                                            }
+                                                            else {
+                                                                for(i9 = 0; i9 <= fci->numDivisions; i9++) {
                                                                     if(stats[9]->optimizedWeightPhase1 > 0) stats[9]->weight = stats[9]->optimizedWeightPhase1 + fci->refinementBase + (i9 * fci->increment2);
-                                                                    else { stats[9]->weight = 0; i9 = fci->numDivisions+1; }
+                                                                    else {
+                                                                        stats[9]->weight = 0;
+                                                                        i9 = fci->numDivisions + 1;
+                                                                    }
                                                                     CheckWeights(9)
                                                                     if(numActiveModels == 9) {
-                                                                        RunRmse()               
-                                                                    } else {
-                                                                        for(i10=0; i10<=fci->numDivisions; i10++) {   
+                                                                        RunRmse()
+                                                                    }
+                                                                    else {
+                                                                        for(i10 = 0; i10 <= fci->numDivisions; i10++) {
                                                                             if(stats[10]->optimizedWeightPhase1 > 0) stats[10]->weight = stats[10]->optimizedWeightPhase1 + fci->refinementBase + (i10 * fci->increment2);
-                                                                            else { stats[10]->weight = 0; i10 = fci->numDivisions+1; }
+                                                                            else {
+                                                                                stats[10]->weight = 0;
+                                                                                i10 = fci->numDivisions + 1;
+                                                                            }
                                                                             CheckWeights(10)
                                                                             if(numActiveModels == 10) {
-                                                                                RunRmse()      
-                                                                            } else {
-                                                                                for(i11=0; i11<=fci->numDivisions; i11++) {   
+                                                                                RunRmse()
+                                                                            }
+                                                                            else {
+                                                                                for(i11 = 0; i11 <= fci->numDivisions; i11++) {
                                                                                     if(stats[11]->optimizedWeightPhase1 > 0) stats[11]->weight = stats[11]->optimizedWeightPhase1 + fci->refinementBase + (i11 * fci->increment2);
-                                                                                    else { stats[11]->weight = 0; i11 = fci->numDivisions+1; }
+                                                                                    else {
+                                                                                        stats[11]->weight = 0;
+                                                                                        i11 = fci->numDivisions + 1;
+                                                                                    }
                                                                                     CheckWeights(11)
                                                                                     if(numActiveModels == 11) {
-                                                                                        RunRmse()               
-                                                                                    } else {
+                                                                                        RunRmse()
+                                                                                    }
+                                                                                    else {
                                                                                         fprintf(stderr, "Got to end of nested loop\n");
                                                                                         exit(1);
                                                                                     }
@@ -437,12 +484,12 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
             }
         }
     }
-        
+
 #ifdef NESTED_OPT_DEBUG
     fprintf(stderr, "\n=== Elapsed time for phase 2: %s [RMSE calls = %ld] [RMSE = %.2f%%]\n", getElapsedTime(Start_t), modelRun->phase2RMSEcalls, modelRun->optimizedPctRMSEphase2 * 100);
 #endif    
     dumpWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 2);
-    
+
     return True;
 }
 
@@ -453,19 +500,17 @@ void dumpWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunr
 
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
-    fprintf(stderr, "\n=== Phase %d weights for %s hours ahead %d", phase, genProxySiteName(fci), fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
+    fprintf(stderr, "=== Phase %d weights for %s hours ahead %d", phase, genProxySiteName(fci), fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
     if(hoursAfterSunriseIndex >= 0)
-        fprintf(stderr, ", hours after sunrise %d, ktIndex %d", hoursAfterSunriseIndex+1, ktIndex);
+        fprintf(stderr, ", hours after sunrise %d, ktIndex %d", hoursAfterSunriseIndex + 1, ktIndex);
     fprintf(stderr, ":\n");
 
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {           
+    for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+        if(modelRun->hourlyModelStats[modelIndex].maskSwitchOn) {
             fprintf(stderr, "\t%-35s = %-8d\n", getModelName(fci, modelIndex), phase < 2 ? modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 : modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2);
         }
-    }    
-    fprintf(stderr, "\t\n[Phase %d RMSE = %.2f%%]\n\n", phase, (phase < 2 ? modelRun->optimizedPctRMSEphase1 : modelRun->optimizedPctRMSEphase2) * 100);   
+    }
 }
-
 
 void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex)
 {
@@ -473,7 +518,7 @@ void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfte
     modelRunType *modelRun;
     double minRmse;
 
-    modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];    
+    modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
     minRmse = modelRun->weightedModelStatsVsGround.rmsePct;
 
@@ -483,23 +528,23 @@ void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfte
         else
             fprintf(stderr, "%ld sumWeight and %ld RMSE calls  @ %s new low RMSE (phase 2) = %.3f%% wts=", modelRun->phase2SumWeightsCalls, modelRun->phase2RMSEcalls, getElapsedTime(Start_t), minRmse * 100);
     }
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {
+    for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+        if(modelRun->hourlyModelStats[modelIndex].maskSwitchOn) {
             if(fci->inPhase1) {
                 modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase1 = modelRun->hourlyModelStats[modelIndex].weight;
-                if(fci->verbose) 
+                if(fci->verbose)
                     fprintf(stderr, "%d ", modelRun->hourlyModelStats[modelIndex].weight);
             }
             else {
                 modelRun->hourlyModelStats[modelIndex].optimizedWeightPhase2 = modelRun->hourlyModelStats[modelIndex].weight;
-                if(fci->verbose) 
+                if(fci->verbose)
                     fprintf(stderr, "%d ", modelRun->hourlyModelStats[modelIndex].weight);
             }
         }
     }
     if(fci->verbose)
         fprintf(stderr, "\n");
-    
+
     if(fci->inPhase1)
         modelRun->optimizedPctRMSEphase1 = minRmse;
     else
@@ -507,6 +552,7 @@ void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfte
 }
 
 //#define DUMP_ALL_WEIGHTS
+
 int sumWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex)
 {
     int modelIndex;
@@ -515,20 +561,29 @@ int sumWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunris
 
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
     weightSum = 0;
-    for(modelIndex=0; modelIndex < fci->numModels; modelIndex++) {
-        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {
-#ifdef DUMP_ALL_WEIGHTS
-            fprintf(stderr, "%d-%d ", modelIndex, modelRun->hourlyModelStats[modelIndex].weight);
+#ifdef REPORT_TRIALS
+    fprintf(stderr, "[%d] ", fci->numModels);
 #endif
-            weightSum += (modelRun->hourlyModelStats[modelIndex].weight < 0 ? 0 : modelRun->hourlyModelStats[modelIndex].weight);  // ignore negative weights
+
+    for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+        if(modelRun->hourlyModelStats[modelIndex].maskSwitchOn) {
+#ifdef REPORT_TRIALS
+            fprintf(stderr, " %s-%d ", getModelName(fci, modelIndex), modelRun->hourlyModelStats[modelIndex].weight);
+#endif
+            weightSum += (modelRun->hourlyModelStats[modelIndex].weight < 0 ? 0 : modelRun->hourlyModelStats[modelIndex].weight); // ignore negative weights
             if(weightSum > fci->weightSumHighCutoff)// no need to keep adding to a number that's breached the max weight sum allowed
                 break; //return weightSum; 
         }
+#ifdef REPORT_TRIALS
+        else {
+            fprintf(stderr, " %s-OFF ", getModelName(fci, modelIndex));
+        }
+#endif        
     }
-#ifdef DUMP_ALL_WEIGHTS
-    fprintf(stderr, " : sum = %d\n", weightSum);
+#ifdef REPORT_TRIALS
+    fprintf(stderr, " [sum=%d]", weightSum);
 #endif    
-    return weightSum;    
+    return weightSum;
 }
 
 int weightSumLimitExceeded(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int maxModelIndex)
@@ -539,18 +594,18 @@ int weightSumLimitExceeded(forecastInputType *fci, int hoursAheadIndex, int hour
 
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
     weightSum = 0;
-    for(modelIndex=0; modelIndex < maxModelIndex-1; modelIndex++) {
-        if(isContributingModel(&modelRun->hourlyModelStats[modelIndex])) {
+    for(modelIndex = 0; modelIndex < maxModelIndex - 1; modelIndex++) {
+        if(modelRun->hourlyModelStats[modelIndex].maskSwitchOn) {
 #ifdef DUMP_ALL_WEIGHTS
-            fprintf(stderr, "%d-%d ", modelIndex, modelRun->hourlyModelStats[modelIndex].weight);
+            if(!fci->inPhase1) fprintf(stderr, "%d-%d ", modelIndex, modelRun->hourlyModelStats[modelIndex].weight);
 #endif
-            weightSum += (modelRun->hourlyModelStats[modelIndex].weight < 0 ? 0 : modelRun->hourlyModelStats[modelIndex].weight);  // ignore negative weights
+            weightSum += (modelRun->hourlyModelStats[modelIndex].weight < 0 ? 0 : modelRun->hourlyModelStats[modelIndex].weight); // ignore negative weights
             if(weightSum > fci->weightSumHighCutoff)// no need to keep adding to a number that's breached the max weight sum allowed
                 return True; //return weightSum; 
         }
     }
 #ifdef DUMP_ALL_WEIGHTS
-    fprintf(stderr, " : sum = %d\n", weightSum);
+    if(!fci->inPhase1) fprintf(stderr, " : sum = %d\n", weightSum);
 #endif    
-    return False;    
+    return False;
 }

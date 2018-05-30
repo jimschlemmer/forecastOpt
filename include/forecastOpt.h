@@ -45,7 +45,7 @@ extern "C" {
 #define FatalError(function, message) fatalError(function, message, __FILE__, __LINE__)
 
 #define MAX_MODELS 10
-#define MAX_SITES 16
+#define MAX_SITES 500
 #define MAX_HOURS_AHEAD 48
 #define MAX_HOURS_AFTER_SUNRISE 16
 #define MIN_GHI_VAL 5
@@ -72,7 +72,7 @@ typedef enum {
 } modelKindType;
 
 typedef enum {  // OK is valid; others are rejection codes
-    zenith, groundLow, satLow, nwpLow, notHAS, ktOutOfRange, OK
+    zenith, groundLow, satLow, nwpLow, notHAS, notKt, OK
 } validType ;
 
 typedef struct {
@@ -107,8 +107,14 @@ typedef struct {
 typedef struct {
     double modelGHI[MAX_MODELS];
     validType groupIsValid;
-    double ktSatGHI, ktTargetNWP, ktV4, optimizedKt, optimizedGHI, correctedOptimizedGHI;
-    int ktIndex;
+    double  ktSatGHI, // used for a correction scheme
+            ktTargetNWP, // this is the kt that's computed as, for example, ECMWF/CLR in the first leg
+            ktV4, // this is the kt that computed from a non-KTI first leg, i.e., just like old v4 -- not currently used
+            ktOpt, // this is the kt that computed as the 2nd of the ktTargetNWP run, = optimizedGHI1/CLR
+            optimizedGHI1, // this is the optimized GHI from the 1st leg
+            optimizedGHI2, // this is the optimized GHI from the 2nd leg
+            correctedOptimizedGHI;
+    int ktIndexNWP, ktIndexOpt;
 } forecastDataType;
 
 // for each HA there is an NWP input file with the time series data
@@ -203,6 +209,7 @@ typedef struct {
     int numInputFiles;
     char *outputDirectory;
     int groundGHICol, groundDNICol, satGHICol, clearskyGHICol, ktModelColumn, startModelsColumnNumber;
+    char *ktModelColumnName;
     dateTimeType startDate, endDate;
     char *startDateStr, *endDateStr;
     char verbose;
@@ -230,7 +237,7 @@ typedef struct {
     char gotConfigFile, gotForecastFile;
     char doModelPermutations;
     permutationType modelPermutations;
-    char doKtBootstrap;
+    char doKtNWP, doKtOpt, doKtBootstrap, inKtBootstrap, doKtAndNonKt;
 } forecastInputType;
 
 char *getModelName(forecastInputType *fci, int modelIndex);
@@ -258,7 +265,8 @@ int isContributingModel(modelStatsType *model);
 void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int kitIndex, int permutationIndex);
 timeSeriesType *getNextTimeSeriesSample(forecastInputType *fci, int hoursAheadIndex);
 void printHourlySummary(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
-void setKtIndex(forecastInputType *fci, forecastDataType *thisSample);
+void setKtIndex(forecastInputType *fci, timeSeriesType *thisTS, int hoursAheadIndex);
+int optimizeGHI(forecastInputType *fci, int hoursAheadIndex);
 
 #endif /* FORECASTOPT_H */
 

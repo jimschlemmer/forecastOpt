@@ -63,3 +63,4 @@ int getModelIndex(forecastInputType *fci, char *modelName, int *modelIndex);
 timeSeriesType *allocTimeSeriesSample(forecastInputType *fci, int hoursAheadIndex);
 timeSeriesType *findTimeSeriesSample(forecastInputType *fci, dateTimeType *dt);
 char *validString(validType code);
+int codeIsOK(validType code);

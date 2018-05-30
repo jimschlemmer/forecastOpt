@@ -12,7 +12,7 @@
 #include "forecastOpt.h"
 #include "forecastOptUtils.h"
 
-#define VERSION "1.1"
+#define VERSION "1.2"
 
 //#define DUMP_ALL_DATA
 //#define DEBUG_HAS
@@ -55,14 +55,16 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     extern int optind;
     int parseDates(forecastInputType *fci, char *optarg);
 
+    fci->doKtNWP = True;
+
     //static char tabDel[32];
     //sprintf(tabDel, "%c", 9);  // ascii 9 = TAB
 
-    while((c = getopt(argC, argV, "b:kpfa:c:dto:s:HhvSVr:mw:i:B")) != EOF) {
+    while((c = getopt(argC, argV, "b:kpfa:c:dto:s:HhvSVr:w:i:BK:")) != EOF) {
         switch(c) {
             case 'd':
             {
-                fci->delimiter = ",";
+                fci->doKtAndNonKt = True;
                 break;
             }
             case 'a':
@@ -123,12 +125,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                 return (False);
             case 'V': version();
                 return (False);
-            case 'm':
-            {
-                fci->multipleSites = True;
-                break;
-            }
-            case 'k':
+            case 'p':
             {
                 fci->skipPhase2 = True;
                 break;
@@ -143,13 +140,19 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                 fci->numDivisions = atoi(optarg);
                 break;
             }
+            case 'k':
+            {
+                fci->numKtBins = 1; // override KTI mechanism
+                fci->doKtNWP = False;
+                break;
+            }
             case 'w':
             {
                 fci->modelMixFileInput.fileName = strdup(optarg);
                 fci->runWeightedErrorAnalysis = True;
                 break;
             }
-            case 'p':
+            case 'P':
             {
                 fci->doModelPermutations = False;
                 break;
@@ -159,11 +162,18 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                 fci->useSatelliteDataAsRef = True;
                 fci->groundGHICol = 6;
                 fci->satGHICol = 5;
+                fprintf(stderr, "[NOTE: Using satGHI as reference]\n");
                 break;
             }
             case 'B':
             {
-                fci->doKtBootstrap = True;
+                fci->doKtBootstrap = True; // this means run v4 and then bootstrap
+                fci->doKtNWP = True;
+                break;
+            }
+            case 'K':
+            {
+                fci->ktModelColumnName = strdup(optarg);
                 break;
             }
             default: return False;
@@ -176,9 +186,6 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     if(fci->outputDirectory == NULL) {
         FatalError("parseArgs()", "no -o outputDirectory arg given");
     }
-    if(fci->configFile.fileName == NULL) {
-        FatalError("parseArgs()", "no -c configFile arg given");
-    }
 
     if(fci->runHoursAfterSunrise) { // allocate modelRunType data structure space
         int i, j;
@@ -189,24 +196,44 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                 fci->hoursAfterSunriseGroup[i][j] = malloc(MAX_KT_BINS * sizeof (modelRunType));
         }
     }
+    /*
+        For numDivisions =  5, increment1 = 100/5 = 20 => 0,20,40,60,80,100
+        For numDivisions =  7, increment1 = 100/7 = 14 => 7,14,28,42,56,70,84,98
+        For numDivisions = 10, increment1 = 100/10 = 10 => 10,20,30,40,50,60,70,80,90,100
+     */
+    fci->increment1 = 100 / fci->numDivisions; // numDivisions=10 => increment1=10, 5 => 20, 25 => 4
+    fci->refinementBase = -(fci->increment1); // might be better off with -(refinementBase/2)
+    fci->increment2 = MAX(1, (2 * fci->increment1 / fci->numDivisions)); // 2*20/5 = 8, 2*14/7 = 4, 2*10/10 = 2, 2*4/25 = 0
+
+    fprintf(stderr, "\n======== Weight Search Settings =========\n");
+    fprintf(stderr, "===== increment1 = %d\n", fci->increment1);
+    fprintf(stderr, "===== numDivisions = %d\n", fci->numDivisions);
+    if(!fci->skipPhase2) {
+        fprintf(stderr, "===== increment2 = %d\n", fci->increment2);
+        fprintf(stderr, "===== refinementBase = %d\n", fci->refinementBase);
+    }
+    fprintf(stderr, "===========================================\n");
+
+
     return True;
 }
 
 void help(void)
 {
     version();
-    printf("usage: %s [-dsmpkSvh] [-r beginHourIndex,endHourIndex] [-a begin,end] [-o outputDir] [-b divisions] -c configFile forecastFile\n", Progname);
+    printf("usage: %s [-dsmpkSBfvh] [-r beginHourIndex,endHourIndex] [-a begin,end] [-o outputDir] [-b divisions] forecastFile\n", Progname);
     printf("where: -d = comma separated input [TAB]\n");
     printf("       -s maxHours = set max hours after sunrise\n");
-    printf("       -m = input data file contains multiple sites (concatenated)\n");
-    printf("       -k = skip phase 2 optimization\n");
+    printf("       -p = skip phase 2 optimization\n");
+    printf("       -k = don't do kt binning\n");
     printf("       -S = use satellite model data as reference\n");
     printf("       -r beginHourIndex,endHourIndex = specify which hour ahead indexes to start and end with\n");
     printf("       -a begin,end = specify begin and end dates in YYYYMMDD,YYYYMMDD format\n");
     printf("       -o outputDir = specify where output files go\n");
     printf("       -b divisions = specify how many intervals the 0..100 weight range is divided into [def=7]\n");
-    printf("       -c configFile = specify config file\n");
-    printf("       -v = be versbose\n");
+    printf("       -B = run in kt bootstrap mode\n");
+    printf("       -f = don't filter with satModel data\n");
+    printf("       -v = be verbose\n");
     printf("       -h = help\n");
     printf("       forecastFile = .csv forecast file\n");
 }
@@ -239,13 +266,27 @@ void processForecast(forecastInputType *fci)
 
     initPermutationSwitches(fci);
 
+    // default mode : run NWP-based kt opt
+    // -k mode : v4 equivalent
+    // -B bootstrap mode : run with v4 kt and then recompute kt based on that and re-run
+
     //for(permutationIndex = 1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
     for(permutationIndex = 31; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
         //    for(permutationIndex = fci->modelPermutations.numPermutations-1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
-        if(fci->doKtBootstrap)
-            runErrorAnalysisBootstrap(fci, permutationIndex); 
-        else
-            runErrorAnalysis(fci, permutationIndex); 
+        if(fci->doKtBootstrap) {
+            fci->numKtBins = 1;
+            runErrorAnalysis(fci, permutationIndex); // this produces v4
+            fci->numKtBins = 6;
+            runErrorAnalysisBootstrap(fci, permutationIndex);
+        }
+        else {
+            if(fci->doKtAndNonKt) {
+                fci->numKtBins = 1;
+                runErrorAnalysis(fci, permutationIndex); // this produces v4
+                fci->numKtBins = 6;
+            }
+            runErrorAnalysis(fci, permutationIndex); // this produces v4x
+        }
     }
 
     fprintf(stderr, "=== Ending at %s\n", timeOfDayStr());
@@ -257,38 +298,39 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
 {
     int hoursAheadIndex, hoursAfterSunriseIndex, ktIndex;
 
+    fci->inKtBootstrap = False;
+
     if(fci->runHoursAfterSunrise) {
         for(hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
             int numHASwithData = 0;
             for(hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+                //ktIndex = 0;
                 for(ktIndex = 0; ktIndex < fci->numKtBins; ktIndex++) {
-                    if(hoursAheadIndex == 16)
-                        fprintf(stderr, "here");
                     setModelSwitches(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, permutationIndex);
-                    fprintf(stderr, "############ Running for HA/HAS/KTI/permIndex = %d/%d/%d/%d\n\n",
+                    fprintf(stderr, "\n############ Running for HA/HAS/KTI/permIndex = %d/%d/%d/%d\n\n",
                             fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAhead,
                             fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAfterSunrise,
                             ktIndex,
                             permutationIndex);
                     computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
-                    dumpNumModelsReportingTable(fci);
+                    //dumpNumModelsReportingTable(fci);
                     printRmseTableHour(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
                     printHourlySummary(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
 
                     // This is the actual optimizer call
                     numHASwithData += runOptimizerNested(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
-
-                    fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
+                    //fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
                 }
             }
             if(numHASwithData) {
+                optimizeGHI(fci, hoursAheadIndex);
                 dumpHourlyOptimizedTS(fci, hoursAheadIndex);
                 dumpModelMixRMSE(fci, hoursAheadIndex);
             }
         }
         dumpHoursAfterSunrise(fci);
         //dumpModelMix_EachModel_HAxHAS(fci);
-        dumpModelMix_EachHAS_HAxModel(fci);
+        //dumpModelMix_EachHAS_HAxModel(fci);
         /*
                 for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
                     dumpModelMix(fci, hoursAheadIndex);
@@ -302,22 +344,22 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
             fprintf(stderr, "\n############ Running for hour ahead %d\n\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
             setModelSwitches(fci, hoursAheadIndex, -1, -1, permutationIndex);
             computeModelRMSE(fci, hoursAheadIndex, -1, -1);
-            dumpNumModelsReportingTable(fci);
+            //dumpNumModelsReportingTable(fci);
             printRmseTableHour(fci, hoursAheadIndex, -1, -1);
             printHourlySummary(fci, hoursAheadIndex, -1, -1);
             if(runOptimizerNested(fci, hoursAheadIndex, -1, -1)) {
                 dumpHourlyOptimizedTS(fci, hoursAheadIndex);
-                fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
+                //fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
                 dumpModelMixRMSE(fci, hoursAheadIndex);
             }
         }
-        printHoursAheadSummaryCsv(fci);
+        //printHoursAheadSummaryCsv(fci);
     }
 
 
     //    printByHour(fci);
     //    printByModel(fci);
-    printByAnalysisType(fci);
+    //printByAnalysisType(fci);
 
     if(fci->multipleSites) {
         // Now go through all the individual site data with the weights derived from the composite run
@@ -325,6 +367,8 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
         // 2) run the RMSE
         // 3) write summary somewhere
     }
+    fclose(fci->modelMixFileOutput.fp);
+    fci->modelMixFileOutput.fp = NULL;
 }
 
 void runErrorAnalysisBootstrap(forecastInputType *fci, int permutationIndex)
@@ -332,82 +376,85 @@ void runErrorAnalysisBootstrap(forecastInputType *fci, int permutationIndex)
     int hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, sampleInd;
     timeSeriesType *thisSample;
 
-    if(fci->runHoursAfterSunrise) {
-        for(hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
-            int numHASwithData = 0;
-                // set numKtBins temporarily to 1
-                // run optimizer and save kt's based on that run
-                // rerun optimizer with numKtBins restored and using previous kt's
-            fci->numKtBins = 1;
-            ktIndex = 0;
-            for(hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+    fci->inKtBootstrap = True;
+
+    for(hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
+        int numHASwithData = 0;
+        /*
+        // set numKtBins temporarily to 1
+        // run optimizer and save kt's based on that run
+        // rerun optimizer with numKtBins restored and using previous kt's
+        for(hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+            setModelSwitches(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, permutationIndex);
+            fprintf(stderr, "############ Running bootstrap phase for HA/HAS/permIndex = %d/%d/%d\n\n",
+                    fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAhead,
+                    fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAfterSunrise,
+                    permutationIndex);
+            computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+            //dumpNumModelsReportingTable(fci);
+            printRmseTableHour(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+            printHourlySummary(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+
+            // This is the actual optimizer call
+            numHASwithData += runOptimizerNested(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+
+            //fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
+        }
+        if(numHASwithData) {
+            dumpHourlyOptimizedTS(fci, hoursAheadIndex); // this is where the kt get computed
+            dumpModelMixRMSE(fci, hoursAheadIndex);
+        }
+
+         */
+
+        //////////////
+        // Now run again with ktV4 as extra dimension
+        //////////////
+
+        // set the proper kt index for this HA using ktV4
+        for(sampleInd = 0; sampleInd < fci->numTotalSamples; sampleInd++) {
+            thisSample = &fci->timeSeries[sampleInd];
+            setKtIndex(fci, thisSample, hoursAheadIndex); // set the ktIndex for bootstrapping
+        }
+
+        for(hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
+            for(ktIndex = 0; ktIndex < fci->numKtBins; ktIndex++) {
                 setModelSwitches(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, permutationIndex);
-                fprintf(stderr, "############ Running bootstrap phase for HA/HAS/permIndex = %d/%d/%d\n\n",
+                fprintf(stderr, "############ Running Bootstrap KTI phase for HA/HAS/permIndex = %d/%d/%d/%d\n\n",
                         fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAhead,
                         fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAfterSunrise,
+                        ktIndex,
                         permutationIndex);
                 computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
-                dumpNumModelsReportingTable(fci);
+                //dumpNumModelsReportingTable(fci);
                 printRmseTableHour(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
                 printHourlySummary(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
 
                 // This is the actual optimizer call
                 numHASwithData += runOptimizerNested(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
 
-                fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
-            }
-            if(numHASwithData) {
-                dumpHourlyOptimizedTS(fci, hoursAheadIndex); // this is where the kt get computed
-                dumpModelMixRMSE(fci, hoursAheadIndex);
-            }
-
-            // Now run again with ktV4 as extra dimension
-            fci->numKtBins = 6;
-            // set the proper kt index for this HA using ktV4
-            for(sampleInd = 0; sampleInd < fci->numTotalSamples; sampleInd++) {
-                thisSample = &fci->timeSeries[sampleInd];
-                    setKtIndex(fci, &thisSample->forecastData[hoursAheadIndex]);  // set the ktIndex regardless of filter status
-            }
-
-            
-            for(hoursAfterSunriseIndex = 0; hoursAfterSunriseIndex < fci->maxHoursAfterSunrise; hoursAfterSunriseIndex++) {
-                for(ktIndex = 0; ktIndex < fci->numKtBins; ktIndex++) {
-                    setModelSwitches(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, permutationIndex);
-                    fprintf(stderr, "############ Running KTI phase for HA/HAS/permIndex = %d/%d/%d/%d\n\n",
-                            fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAhead,
-                            fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAfterSunrise,
-                            ktIndex,
-                            permutationIndex);
-                    computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
-                    dumpNumModelsReportingTable(fci);
-                    printRmseTableHour(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
-                    printHourlySummary(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
-
-                    // This is the actual optimizer call
-                    numHASwithData += runOptimizerNested(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
-
-                    fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
-                }
-            }
-            if(numHASwithData) {
-                dumpHourlyOptimizedTS(fci, hoursAheadIndex); // this is where the kt get computed
-                dumpModelMixRMSE(fci, hoursAheadIndex);
+                //fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
             }
         }
-        dumpHoursAfterSunrise(fci);
-        //dumpModelMix_EachModel_HAxHAS(fci);
-        dumpModelMix_EachHAS_HAxModel(fci);
-        /*
-                for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
-                    dumpModelMix(fci, hoursAheadIndex);
-                    //dumpWeightedTimeSeries(fci, hoursAheadIndex, -1);
-                }
-         */
+        if(numHASwithData) {
+            optimizeGHI(fci, hoursAheadIndex);
+            dumpHourlyOptimizedTS(fci, hoursAheadIndex); // this is where the kt get computed
+            dumpModelMixRMSE(fci, hoursAheadIndex);
+        }
     }
+    dumpHoursAfterSunrise(fci);
+    //dumpModelMix_EachModel_HAxHAS(fci);
+    //dumpModelMix_EachHAS_HAxModel(fci);
+    /*
+            for(hoursAheadIndex=fci->startHourLowIndex; hoursAheadIndex < fci->maxHoursAfterSunrise; hoursAheadIndex++) {
+                dumpModelMix(fci, hoursAheadIndex);
+                //dumpWeightedTimeSeries(fci, hoursAheadIndex, -1);
+            }
+     */
 
     //    printByHour(fci);
     //    printByModel(fci);
-    printByAnalysisType(fci);
+    //printByAnalysisType(fci);
 
     if(fci->multipleSites) {
         // Now go through all the individual site data with the weights derived from the composite run
@@ -415,5 +462,7 @@ void runErrorAnalysisBootstrap(forecastInputType *fci, int permutationIndex)
         // 2) run the RMSE
         // 3) write summary somewhere
     }
+    fclose(fci->modelMixFileOutput.fp);
+    fci->modelMixFileOutput.fp = NULL;
 }
 
