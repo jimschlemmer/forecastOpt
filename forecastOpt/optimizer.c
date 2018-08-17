@@ -221,7 +221,10 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     modelRun->phase2RMSEcalls = 0;
     modelRun->phase1SumWeightsCalls = 0;
     modelRun->phase2SumWeightsCalls = 0;
-    
+
+    if(modelRun->numValidSamples == 0)
+        return True;
+        
     Start_t = time(NULL);
 
     for(i1 = 0; i1 <= fci->numDivisions; i1++) {

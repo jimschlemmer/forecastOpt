@@ -37,6 +37,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "=== Running [%s ", Progname);
     for(i = 1; i < argc; i++) fprintf(stderr, "%s%s", argv[i], i == argc - 1 ? "]\n" : " ");
 
+    // set default
     initForecastInfo(&fci);
 
     if(!parseArgs(&fci, argc, argv)) {
@@ -195,6 +196,11 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
             for(j = 0; j < MAX_HOURS_AFTER_SUNRISE; j++)
                 fci->hoursAfterSunriseGroup[i][j] = malloc(MAX_KT_BINS * sizeof (modelRunType));
         }
+        long memHASgroup = MAX_HOURS_AHEAD * sizeof (modelRunType **);
+        long memHAShour = MAX_HOURS_AFTER_SUNRISE * sizeof (modelRunType *) * MAX_HOURS_AHEAD;
+        long memHAShrHas = MAX_KT_BINS * sizeof (modelRunType) * MAX_HOURS_AHEAD * MAX_HOURS_AFTER_SUNRISE;
+        long total = memHASgroup + memHAShour + memHAShrHas;
+        fprintf(stderr, "Memory allocated for modelRunType = %ld\n", total);
     }
     /*
         For numDivisions =  5, increment1 = 100/5 = 20 => 0,20,40,60,80,100
@@ -271,7 +277,8 @@ void processForecast(forecastInputType *fci)
     // -B bootstrap mode : run with v4 kt and then recompute kt based on that and re-run
 
     //for(permutationIndex = 1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
-    for(permutationIndex = 31; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
+    //for(permutationIndex = 31; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
+    for(permutationIndex = fci->modelPermutations.numPermutations-1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
         //    for(permutationIndex = fci->modelPermutations.numPermutations-1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
         if(fci->doKtBootstrap) {
             fci->numKtBins = 1;

@@ -2,8 +2,8 @@
 CC      = gcc
 #CC     = cc 
 INC     = -I./../include # -I./include -I/usr/include 
-CFLAGS = -O3 -march=nocona ${INC}
-#CFLAGS = -g -Wall ${INC}
+#CFLAGS = -O3 -march=nocona ${INC}
+CFLAGS = -g -Wall ${INC}
 
 FORECASTLIB  = forecastLib.a
 LIBOBJS = forecastOptUtils.o gridDateTime.o ioUtils.o sunae.o timeUtils.o errorAnalysis.o

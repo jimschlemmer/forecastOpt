@@ -123,7 +123,7 @@ typedef struct {
     double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI;
     forecastDataType forecastData[MAX_HOURS_AHEAD];  // for a given dateTime we will have many HAs
     char sunIsUp;
-    dateTimeType sunrise;
+    //dateTimeType sunrise;
     int hoursAfterSunrise; 
     char *siteName; // useful for multiple site runs
 } timeSeriesType;

@@ -44,6 +44,7 @@ int readForecastData(forecastInputType *fci)
     timeSeriesType *thisSample;
     int hoursAheadIndex, numFiles = 0;
     char pattern[256], **filenames = NULL, tempFilename[1024];
+    void findKtModelColumn(forecastInputType *fci, char *filename);
 
     fci->numInputFiles = 0;
     /* 
@@ -95,6 +96,7 @@ int readForecastData(forecastInputType *fci)
         fgets(fci->forecastHeaderLine2, LINE_LENGTH, fci->inputFiles[hoursAheadIndex].fp);
 
         parseNwpHeaderLine(fci, fci->inputFiles[hoursAheadIndex].fileName);
+        findKtModelColumn(fci, fci->inputFiles[hoursAheadIndex].fileName);
 
         fci->forecastLineNumber = 2;
 
@@ -139,7 +141,7 @@ int readForecastData(forecastInputType *fci)
 
             //#define USE_ZENITH_INSTEAD_OF_HAS
             // compute hours after sunrise this date/time
-            thisSample->sunrise = calculateSunrise(&currDate, fci->thisSite->lat, fci->thisSite->lon); // Get the sunrise time for this day
+            dateTimeType sunrise = calculateSunrise(&currDate, fci->thisSite->lat, fci->thisSite->lon); // Get the sunrise time for this day
             thisSample->zenith = calculateZenithAngle(&currDate, fci->thisSite->lat, fci->thisSite->lon);
 
             readDataFromLine(fci, hoursAheadIndex, thisSample, fields, numFields); // get the forecast data -- also sets ktIndex
@@ -154,7 +156,7 @@ int readForecastData(forecastInputType *fci)
 #ifdef USE_ZENITH_INSTEAD_OF_HAS
                 thisSample->hoursAfterSunrise = (int) ((90 - thisSample->zenith) / 10) + 1; // 9 buckets of 10 degrees each
 #else
-                thisSample->hoursAfterSunrise = thisSample->dateTime.hour - thisSample->sunrise.hour;
+                thisSample->hoursAfterSunrise = thisSample->dateTime.hour - sunrise.hour;
                 if(thisSample->hoursAfterSunrise < 1)
                     thisSample->hoursAfterSunrise += 24;
                 if(thisSample->hoursAfterSunrise >= 24)
@@ -174,8 +176,10 @@ int readForecastData(forecastInputType *fci)
         }
     }
 
-    if(fci->ktModelColumn < 0 || fci->ktModelColumn >= fci->numModels)
-        FatalError("readForecastData()", "Looks like the ktModelColumn is out of range");
+    if(fci->ktModelColumn < 0 || fci->ktModelColumn > fci->numModels) {
+        sprintf(ErrStr, "Looks like the ktModelColumn (%d) is out of range.  numModels = %d", fci->ktModelColumn, fci->numModels);
+        FatalError("readForecastData()", ErrStr);
+    }
 
     studyData(fci);
 
@@ -281,8 +285,8 @@ void parseNwpHeaderLine(forecastInputType *fci, char *filename)
     if(fci->numModels > 0) {
         if(fci->verbose)
             fprintf(stderr, "Resetting model isActive switches...\n");
-        for(i=0;i<fci->numModels;i++) {
-            fci->hoursAheadGroup[HA-1].hourlyModelStats[i].isActive = False;
+        for(i = 0; i < fci->numModels; i++) {
+            fci->hoursAheadGroup[HA - 1].hourlyModelStats[i].isActive = False;
         }
     }
 
@@ -303,6 +307,38 @@ void parseNwpHeaderLine(forecastInputType *fci, char *filename)
     }
 
     fci->clearskyGHICol = i; // assumed to be the last
+
+}
+
+void findKtModelColumn(forecastInputType *fci, char *filename)
+{
+    // #year,month,day,hour,min,surface,zen,v3,CMM-east,ECMWF,GFS,HRRR,NDFD,clearsky_GHI
+
+    int i, modelIndex, numFields;
+    char tempLine[1024];
+    char *fields[MAX_FIELDS];
+
+    if(fci->numKtBins == 1)
+        return;
+
+    strcpy(tempLine, fci->forecastHeaderLine2);
+    numFields = split(tempLine + 1, fields, MAX_FIELDS, ","); /* split path */
+
+    // ktModelColumn get detected automatically
+    char gotKtColumn = False;
+    for(i = fci->startModelsColumnNumber, modelIndex = 0; i < (numFields - 1); i++, modelIndex++) { // assuming clearsky comes last so don't register it
+        if(strcmp(fields[i], fci->ktModelColumnName) == 0) {
+            fci->ktModelColumn = modelIndex;
+            gotKtColumn = True;
+            fprintf(stderr, "Setting KT model column to %d for model %s\n", fci->ktModelColumn, fci->ktModelColumnName);
+        }
+    }
+
+    if(!gotKtColumn) {
+        sprintf(ErrStr, "%s : Couldn't find a model that matches %s", filename, fci->ktModelColumnName);
+        FatalError("parseNwpHeaderLine()", ErrStr);
+    }
+
 
 }
 
@@ -434,8 +470,8 @@ int readDataFromLine(forecastInputType *fci, int hoursAheadIndex, timeSeriesType
     }
     //setKtIndex(fci, thisSample, hoursAheadIndex);  // this gets done when the data is read in, sets the 
 
-    //fprintf(stderr, "HA=%d,%s,GHI=%.0f,CLR=%.0f,kt=%.3f\n", hoursAheadIndex, dtToStringCsv2(&thisSample->dateTime), thisSample->forecastData[hoursAheadIndex].modelGHI[fci->ktModelColumn], thisSample->clearskyGHI, thisSample->forecastData[hoursAheadIndex].ktTargetNWP);
-    //#define DUMP_ALL_DATA
+    //fprintf(stderr, "HA=%d,%s,GHI=%.0f,CLR=%.0f,kt=%.3f\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead, dtToStringCsv2(&thisSample->dateTime), thisSample->forecastData[hoursAheadIndex].modelGHI[fci->ktModelColumn], thisSample->clearskyGHI, thisSample->forecastData[hoursAheadIndex].ktTargetNWP);
+    // #define DUMP_ALL_DATA
 #ifdef DUMP_ALL_DATA
     static int firstTime = True;
 
@@ -475,6 +511,7 @@ int readDataFromLine(forecastInputType *fci, int hoursAheadIndex, timeSeriesType
 // hoursAfterSunriseIndex == -1 means filter all data (across all HAS bins)
 // ktIndex is 0-based ktIndex.  [0 : 0.0 < kt <= 0.1], [1 : 0.1 < kt <= 0.2], ... , [9 : 0.9 < kt <= 1.0]
 // <not used at present>
+
 int setKtLimits(int ktIndex, double *ktLow, double *ktHigh)
 {
     switch(ktIndex) {
@@ -512,7 +549,7 @@ void setKtIndex(forecastInputType *fci, timeSeriesType *thisTS, int hoursAheadIn
     double kt;
     forecastDataType *thisSample = &thisTS->forecastData[hoursAheadIndex];
     int *ktIndex;
-            
+
     // we're either in ktbootstrap mode or just running without kt bins
     if(fci->numKtBins <= 1) {
         thisSample->ktIndexNWP = 0;
@@ -521,9 +558,9 @@ void setKtIndex(forecastInputType *fci, timeSeriesType *thisTS, int hoursAheadIn
 
     // set kt value
     if(fci->inKtBootstrap) {
-        thisSample->ktOpt = thisTS->clearskyGHI > 1 ? thisSample->optimizedGHI1/thisTS->clearskyGHI : 0;
+        thisSample->ktOpt = thisTS->clearskyGHI > 1 ? thisSample->optimizedGHI1 / thisTS->clearskyGHI : 0;
         kt = thisSample->ktOpt;
-        //fprintf(stderr, "setKtIndex:%s HA%d CLR=%.1f optimzedGHI1=%.1f ktOpt=%.3f\n", dtToString(&thisTS->dateTime), hoursAheadIndex+1,thisTS->clearskyGHI, thisSample->optimizedGHI1, thisSample->ktOpt);
+        fprintf(stderr, "setKtIndex:%s HA%d CLR=%.1f optimzedGHI1=%.1f ktOpt=%.3f\n", dtToString(&thisTS->dateTime), hoursAheadIndex + 1, thisTS->clearskyGHI, thisSample->optimizedGHI1, thisSample->ktOpt);
         ktIndex = &thisSample->ktIndexOpt;
     }
     else {
@@ -740,7 +777,7 @@ void initForecastInfo(forecastInputType *fci)
     fci->numTotalSamples = 0;
 
     // allocate space for all model data
-    allocatedSamples = 8670 * 5 * MAX_MODELS;
+    allocatedSamples = 8670 * MAX_MODELS;
     size = allocatedSamples * sizeof (timeSeriesType);
     /*
         for(i = 0; i < MAX_HOURS_AHEAD; i++) {
@@ -752,6 +789,8 @@ void initForecastInfo(forecastInputType *fci)
             fci->nwpTimeSeries[i].numTimeSeriesSamples = 0;
         }
      */
+            
+    fprintf(stderr, "Allocating %ld bytes for fci->timeSeries\n", size);
     if((fci->timeSeries = (timeSeriesType *) malloc(size)) == NULL) {
         FatalError("initForecastInfo()", "memory alloc error");
     }
@@ -787,15 +826,14 @@ void initForecastInfo(forecastInputType *fci)
     fci->groundGHICol = 5;
     fci->satGHICol = 6;
     fci->startModelsColumnNumber = 7;
-    
+
     // specify target GHI for kt calculations
-    fci->ktModelColumn = 10; // ECMWF column from input files
+    fci->ktModelColumn = 3; // ECMWF, in terms of 0-based model indices [GFS=0, NDFD=1, CMM=2, ECMWF=3, HRRR=4]
     fci->ktModelColumnName = "ECMWF";
-    //fci->ktModelColumn = 8;  // NDFD column from input files
+    //fci->ktModelColumn = 1;  // NDFD column from input files
     //fci->ktModelColumnName = "NDFD";
-    //fci->ktModelColumn = 7; // GFS column from input files
+    //fci->ktModelColumn = 0; // GFS column from input files
     //fci->ktModelColumnName = "GFS";
-    fci->ktModelColumn -= fci->startModelsColumnNumber; // adjust to 0-based model index
 
 #ifdef KTBINS_6
     fci->numKtBins = 6; // needs to be changed if the setKtIndex is changes
@@ -845,6 +883,7 @@ timeSeriesType *allocTimeSeriesSample(forecastInputType *fci, int hoursAheadInde
     if(fci->numTotalSamples == allocatedSamples) {
         allocatedSamples *= 2;
         fci->timeSeries = (timeSeriesType *) realloc(fci->timeSeries, allocatedSamples * sizeof (timeSeriesType));
+        fprintf(stderr, "Reallocating %ld bytes for fci->timeSeries\n", allocatedSamples * sizeof (timeSeriesType));
         //fci->nwpTimeSeries[hoursAheadIndex].timeSeries = (timeSeriesType *) realloc(fci->nwpTimeSeries[hoursAheadIndex].timeSeries, allocatedSamples * sizeof (timeSeriesType));
     }
 
@@ -1008,7 +1047,7 @@ void registerModelInfo(forecastInputType *fci, char *modelName, char *modelDescr
     fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].tooMuchDataMissing = False;
     fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].modelName = fci->modelInfo[modelIndex].modelName;
     if(fci->verbose) {
-        fprintf(stderr, "\tactivating %s for HA %d\n", fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].modelName, hoursAheadIndex+1);
+        fprintf(stderr, "\tactivating %s for HA %d\n", fci->hoursAheadGroup[hoursAheadIndex].hourlyModelStats[modelIndex].modelName, hoursAheadIndex + 1);
     }
 
     if(!newModel) // already registered this model
@@ -1374,7 +1413,7 @@ FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int ho
     char satGHIerr[1024];
     //    modelRunType *modelRun = &fci->hoursAheadGroup[hoursAheadIndex];
     modelRunType *modelRun;
-    
+
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
     if(fci->outputDirectory == NULL || fci->thisSite->siteName == NULL) {
@@ -1382,7 +1421,7 @@ FILE *openErrorTypeFileHourly(forecastInputType *fci, char *analysisType, int ho
         return NULL;
     }
 
-    if(strcasecmp(analysisType, "rmse") == 0) 
+    if(strcasecmp(analysisType, "rmse") == 0)
         sprintf(satGHIerr, "sat GHI RMSE=%.1f%%", modelRun->satModelStats.rmsePct * 100);
     else if(strcasecmp(analysisType, "mae") == 0)
         sprintf(satGHIerr, "sat GHI MAE=%.1f%%", modelRun->satModelStats.maePct * 100);
@@ -1923,7 +1962,7 @@ void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfte
     permutationType *perm = &fci->modelPermutations;
     modelRunType *modelRun;
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
-//#define DUMP_MASK
+    //#define DUMP_MASK
 #ifdef DUMP_MASK
     static int firstTime = 1;
     if(firstTime) {
@@ -1936,9 +1975,9 @@ void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfte
         fprintf(stderr, "\n");
     }
 #endif
-    
+
     perm->currentPermutationIndex = permutationIndex;
-    
+
 #ifdef DUMP_MASK
     fprintf(stderr, "SMS:%d,%d,%d,%d", hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, permutationIndex);
 #endif
