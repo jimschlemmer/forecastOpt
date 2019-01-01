@@ -906,7 +906,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
                 weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPhase1 : thisModelStats->optimizedWeightPhase2;
 
                 if(thisModelStats->maskSwitchOn) {
-                    fprintf(fci->optimizedTSFile.fp, ",%.1f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
+                    fprintf(fci->optimizedTSFile.fp, ",%d", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
                     if(codeIsOK(validCode))
                         fprintf(fci->optimizedTSFile.fp, ",%d", weight);
                     else
