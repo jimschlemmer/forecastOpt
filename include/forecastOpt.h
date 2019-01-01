@@ -269,7 +269,7 @@ void setModelSwitches(forecastInputType *fci, int hoursAheadIndex, int hoursAfte
 timeSeriesType *getNextTimeSeriesSample(forecastInputType *fci, int hoursAheadIndex);
 void printHourlySummary(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 void setKtIndex(forecastInputType *fci, timeSeriesType *thisTS, int hoursAheadIndex);
-int optimizeGHI(forecastInputType *fci, int hoursAheadIndex);
+int computeOptimizedGHI(forecastInputType *fci, int hoursAheadIndex);
 
 #endif /* FORECASTOPT_H */
 

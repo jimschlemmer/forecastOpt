@@ -335,7 +335,7 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
                 }
             }
             if(numHASwithData) {
-                optimizeGHI(fci, hoursAheadIndex);
+                computeOptimizedGHI(fci, hoursAheadIndex);
                 dumpHourlyOptimizedTS(fci, hoursAheadIndex);
                 dumpModelMixRMSE(fci, hoursAheadIndex);
             }
@@ -449,7 +449,7 @@ void runErrorAnalysisBootstrap(forecastInputType *fci, int permutationIndex)
             }
         }
         if(numHASwithData) {
-            optimizeGHI(fci, hoursAheadIndex);
+            computeOptimizedGHI(fci, hoursAheadIndex);
             dumpHourlyOptimizedTS(fci, hoursAheadIndex); // this is where the kt get computed
             dumpModelMixRMSE(fci, hoursAheadIndex);
         }

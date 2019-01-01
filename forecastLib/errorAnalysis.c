@@ -764,7 +764,7 @@ int computeHourlyRmseErrors(forecastInputType *fci, int hoursAheadIndex, int hou
 
 //#define DEBUG_2
 
-int optimizeGHI(forecastInputType *fci, int hoursAheadIndex)
+int computeOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
 {
     timeSeriesType *thisSample;
     modelStatsType *thisModelStats;
@@ -796,11 +796,12 @@ int optimizeGHI(forecastInputType *fci, int hoursAheadIndex)
                 // phase1 or phase2 weights?
                 weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPhase1 : thisModelStats->optimizedWeightPhase2;
                 if(thisModelStats->maskSwitchOn && weight > 0) { // weights are 0-100
-                    weight /= 100.0;
                     *optGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
                 }
             }
 
+            *optGHI = *optGHI / 100.0;
+            
             if(thisSample->clearskyGHI > 10) {
                 thisSample->forecastData[hoursAheadIndex].ktSatGHI = thisSample->satGHI / thisSample->clearskyGHI;
             }
@@ -918,7 +919,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
 
             // now print the ground data, satellite GHI and optimized GHI
             int optGHI = fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].optimizedGHI2 : thisSample->forecastData[hoursAheadIndex].optimizedGHI1;
-            fprintf(fci->optimizedTSFile.fp, ",%.1f,%.1f,%.1f,%.1f,%.3f\n",
+            fprintf(fci->optimizedTSFile.fp, ",%d,%d,%d,%d,%.3f\n",
                     thisSample->groundGHI,
                     thisSample->satGHI,
                     (thisSample->forecastData[hoursAheadIndex].groupIsValid == OK) ? optGHI : -999,
