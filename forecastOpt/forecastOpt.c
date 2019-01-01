@@ -61,7 +61,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     //static char tabDel[32];
     //sprintf(tabDel, "%c", 9);  // ascii 9 = TAB
 
-    while((c = getopt(argC, argV, "b:kpfa:c:dto:s:HhvSVr:w:i:BK:")) != EOF) {
+    while((c = getopt(argC, argV, "b:kpfa:c:dto:s:HhvSVr:w:i:BuK:")) != EOF) {
         switch(c) {
             case 'd':
             {
@@ -177,6 +177,11 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                 fci->ktModelColumnName = strdup(optarg);
                 break;
             }
+            case 'u':
+            {
+                fci->dumpFilterData = True;
+                break;
+            }
             default: return False;
         }
     }
@@ -261,7 +266,7 @@ void processForecast(forecastInputType *fci)
     fprintf(stderr, "%s\n", dtToStringDateTime(&fci->endDate));
     fprintf(stderr, "=== Weight sum range: %d to %d\n", fci->weightSumLowCutoff, fci->weightSumHighCutoff);
 
-    readForecastData(fci); // this reads in all the forecast data (either single site or composite) for all forecast horizons
+    readForecastDataNoNight(fci); // this reads in all the forecast data (either single site or composite) for all forecast horizons
 
     if(fci->runHoursAfterSunrise)
         copyHoursAfterData(fci);

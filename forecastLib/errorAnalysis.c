@@ -76,6 +76,8 @@ int filterForecastData(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     // reset everything that is modified by this function
     clearHourlyErrorFields(fci, hoursAheadIndex, MAX(0, hoursAfterSunriseIndex), MAX(0, ktIndex));
 
+    //    fprintf(stderr, "filterForecastData:hoursAheadIndex = %02d hoursAfterSunriseIndex = %02d ktIndex = %d\n", hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+
     if(hoursAfterSunriseIndex < 0) {
         modelRunStats = &fci->hoursAheadGroup[hoursAheadIndex];
     }
@@ -107,8 +109,6 @@ int filterForecastData(forecastInputType *fci, int hoursAheadIndex, int hoursAft
             modelRunData = &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex];
 
         thisSample->forecastData[hoursAheadIndex].groupIsValid = OK; // innocent until proven guilty
-
-        setKtIndex(fci, thisSample, hoursAheadIndex); // does this need to be done here?
 
         // filter on zenith angle
         if(!sunIsWellUp) {
@@ -243,58 +243,58 @@ int filterForecastData(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     if(fci->numKtBins > 1 && numGoodModels > 0)
         fprintf(stderr, "\tgood kt samples  = %5d (%4.1f%% of QC)\n", numGoodKt, (double) numGoodKt / numGoodModels * 100.0);
 
-//#define DUMP_ALL_FILTERED
-#ifdef DUMP_ALL_FILTERED
-    // dumping all points
-    //fprintf(stderr, "\n\n=== Dumping All Points ===\n");
-    FILE *filterDump;
-    char filterFile[512];
+    //#define DUMP_ALL_FILTERED
+    if(fci->dumpFilterData) {
+        // dumping all points
+        //fprintf(stderr, "\n\n=== Dumping All Points ===\n");
+        FILE *filterDump;
+        char filterFile[512];
 
-    /*
-        if(ktIndex < )
+        /*
+            if(ktIndex < )
+                sprintf(filterFile, "%s/filterDump.HA%d.HAS%d.csv", fci->outputDirectory, hoursAhead, hoursAfterSunrise);
+            else
+         */
+        if(fci->numKtBins == 1)
             sprintf(filterFile, "%s/filterDump.HA%d.HAS%d.csv", fci->outputDirectory, hoursAhead, hoursAfterSunrise);
         else
-     */
-    if(fci->numKtBins == 1)
-        sprintf(filterFile, "%s/filterDump.HA%d.HAS%d.csv", fci->outputDirectory, hoursAhead, hoursAfterSunrise);
-    else
-        sprintf(filterFile, "%s/filterDump.HA%d.HAS%d.KTI%d.%s.csv", fci->outputDirectory, hoursAhead, hoursAfterSunrise, ktIndex,
-            fci->inKtBootstrap ? "OPT" : "NWP");
+            sprintf(filterFile, "%s/filterDump.HA%d.HAS%d.KTI%d.%s.csv", fci->outputDirectory, hoursAhead, hoursAfterSunrise, ktIndex,
+                fci->inKtBootstrap ? "OPT" : "NWP");
 
-    if((filterDump = fopen(filterFile, "w")) == NULL) {
-        sprintf(ErrStr, "Couldn't open filter dump file %s\n", filterFile);
-        perror(ErrStr);
-        exit(1);
-    }
+        if((filterDump = fopen(filterFile, "w")) == NULL) {
+            sprintf(ErrStr, "Couldn't open filter dump file %s\n", filterFile);
+            perror(ErrStr);
+            exit(1);
+        }
 
-    fprintf(filterDump, "#HA=%d,HAS=%d,ktInd=%d\n", hoursAhead, hoursAfterSunrise, ktIndex);
-    fprintf(filterDump, "#site,year,month,day,hour,min,HAS");
-    for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
-        if(modelRunData->hourlyModelStats[modelIndex].maskSwitchOn)
-            fprintf(filterDump, ",%s", getModelName(fci, modelIndex));
-    }
-    fprintf(filterDump, ",zen,satGHI,gndGHI,CLR,kt,ktInd,groupCode\n");
-
-    for(sampleInd = 0; sampleInd < fci->numTotalSamples; sampleInd++) {
-        thisSample = &fci->timeSeries[sampleInd];
-        fprintf(filterDump, "%s", thisSample->siteName);
-        fprintf(filterDump, ",%s", dtToStringCsv2(&thisSample->dateTime));
-        fprintf(filterDump, ",%d", thisSample->hoursAfterSunrise);
+        fprintf(filterDump, "#HA=%d,HAS=%d,ktInd=%d\n", hoursAhead, hoursAfterSunrise, ktIndex);
+        fprintf(filterDump, "#site,year,month,day,hour,min,HAS");
         for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
             if(modelRunData->hourlyModelStats[modelIndex].maskSwitchOn)
-                fprintf(filterDump, ",%.0f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
+                fprintf(filterDump, ",%s", getModelName(fci, modelIndex));
         }
-        fprintf(filterDump, ",%.2f", thisSample->zenith);
-        fprintf(filterDump, ",%.0f", thisSample->satGHI);
-        fprintf(filterDump, ",%.0f", thisSample->groundGHI);
-        fprintf(filterDump, ",%.0f", thisSample->clearskyGHI);
-        fprintf(filterDump, ",%.2f", fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].ktOpt : thisSample->forecastData[hoursAheadIndex].ktTargetNWP);
-        fprintf(filterDump, ",%d", fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].ktIndexOpt : thisSample->forecastData[hoursAheadIndex].ktIndexNWP);
-        fprintf(filterDump, ",%s\n", validString(thisSample->forecastData[hoursAheadIndex].groupIsValid));
+        fprintf(filterDump, ",zen,satGHI,gndGHI,CLR,kt,ktInd,groupCode\n");
+
+        for(sampleInd = 0; sampleInd < fci->numTotalSamples; sampleInd++) {
+            thisSample = &fci->timeSeries[sampleInd];
+            fprintf(filterDump, "%s", thisSample->siteName);
+            fprintf(filterDump, ",%s", dtToStringCsv2(&thisSample->dateTime));
+            fprintf(filterDump, ",%d", thisSample->hoursAfterSunrise);
+            for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+                if(modelRunData->hourlyModelStats[modelIndex].maskSwitchOn)
+                    fprintf(filterDump, ",%d", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
+            }
+            fprintf(filterDump, ",%.2f", thisSample->zenith);
+            fprintf(filterDump, ",%d", thisSample->satGHI);
+            fprintf(filterDump, ",%d", thisSample->groundGHI);
+            fprintf(filterDump, ",%d", thisSample->clearskyGHI);
+            fprintf(filterDump, ",%.2f", fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].ktOpt : thisSample->forecastData[hoursAheadIndex].ktTargetNWP);
+            fprintf(filterDump, ",%d", fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].ktIndexOpt : thisSample->forecastData[hoursAheadIndex].ktIndexNWP);
+            fprintf(filterDump, ",%s\n", validString(thisSample->forecastData[hoursAheadIndex].groupIsValid));
+        }
+        fclose(filterDump);
+        fprintf(stderr, "==========================\n");
     }
-    fclose(filterDump);
-    fprintf(stderr, "==========================\n");
-#endif
 
     if(modelRunStats->numValidSamples < 1) {
 #ifdef WRITE_WARNINGS
@@ -422,7 +422,6 @@ int filterForecastDataAll(forecastInputType *fci, int hoursAheadIndex)
     fprintf(stderr, "\tdaylight samples = %d (%.1f%% of total)\n", numSunUp, (double) numSunUp / numSamples * 100.0);
     if(numSunUp > 0) fprintf(stderr, "\tQC filters       = %d (%.1f%% of daylight samples)\n", numGoodModels, (double) numGoodModels / numSunUp * 100.0);
 
-//#define DUMP_ALL_FILTERED
 #ifdef DUMP_ALL_FILTERED
     // dumping all points
     //fprintf(stderr, "\n\n=== Dumping All Points ===\n");
@@ -452,12 +451,12 @@ int filterForecastDataAll(forecastInputType *fci, int hoursAheadIndex)
         fprintf(filterDump, ",%d", thisSample->hoursAfterSunrise);
         for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
             if(modelRunData->hourlyModelStats[modelIndex].maskSwitchOn)
-                fprintf(filterDump, ",%.0f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
+                fprintf(filterDump, ",%d", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
         }
         fprintf(filterDump, ",%.2f", thisSample->zenith);
-        fprintf(filterDump, ",%.0f", thisSample->satGHI);
-        fprintf(filterDump, ",%.0f", thisSample->groundGHI);
-        fprintf(filterDump, ",%.0f", thisSample->clearskyGHI);
+        fprintf(filterDump, ",%d", thisSample->satGHI);
+        fprintf(filterDump, ",%d", thisSample->groundGHI);
+        fprintf(filterDump, ",%d", thisSample->clearskyGHI);
         fprintf(filterDump, ",%.2f", fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].ktOpt : thisSample->forecastData[hoursAheadIndex].ktTargetNWP);
         fprintf(filterDump, ",%d", fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].ktIndexOpt : thisSample->forecastData[hoursAheadIndex].ktIndexNWP);
         fprintf(filterDump, ",%s\n", validString(thisSample->forecastData[hoursAheadIndex].groupIsValid));
@@ -770,9 +769,9 @@ int optimizeGHI(forecastInputType *fci, int hoursAheadIndex)
     timeSeriesType *thisSample;
     modelStatsType *thisModelStats;
     modelRunType *modelRun;
-    int sampleInd, modelIndex;
+    int sampleInd, modelIndex, *optGHI;
     int ktIndex;
-    double weight, *optGHI;
+    double weight;
 
     filterForecastDataAll(fci, hoursAheadIndex); // set groupIsValid flag on all HAS/KTI so that we can run right through
 
@@ -882,7 +881,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
             modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][thisSample->hoursAfterSunrise - 1][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
             fprintf(fci->optimizedTSFile.fp, "%s", dtToStringCsv2(&thisSample->dateTime));
-            fprintf(fci->optimizedTSFile.fp, ",%s", thisSample->siteName);
+            fprintf(fci->optimizedTSFile.fp, ",%s", genProxySiteName(fci));
             if(fci->runHoursAfterSunrise) {
                 hoursAfterSunrise = thisSample->hoursAfterSunrise - 1;
                 if(hoursAfterSunrise > fci->maxHoursAfterSunrise) {
@@ -906,22 +905,25 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
                 weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPhase1 : thisModelStats->optimizedWeightPhase2;
 
                 if(thisModelStats->maskSwitchOn) {
-                    fprintf(fci->optimizedTSFile.fp, ",%.0f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
+                    fprintf(fci->optimizedTSFile.fp, ",%.1f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
                     if(codeIsOK(validCode))
                         fprintf(fci->optimizedTSFile.fp, ",%d", weight);
                     else
                         fprintf(fci->optimizedTSFile.fp, ",0");
                 }
                 else {
-                    fprintf(stderr, "%s model %s is turned off [%s]\n", dtToStringCsv2(&thisSample->dateTime), getModelName(fci, modelIndex), validString(validCode));
+                    //fprintf(stderr, "%s model %s is turned off [%s]\n", dtToStringCsv2(&thisSample->dateTime), getModelName(fci, modelIndex), validString(validCode));
                 }
             }
 
             // now print the ground data, satellite GHI and optimized GHI
-            double optGHI = fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].optimizedGHI2 : thisSample->forecastData[hoursAheadIndex].optimizedGHI1;
-            fprintf(fci->optimizedTSFile.fp, ",%.0f,%.0f,%.0f,%.0f,%.3f\n", thisSample->groundGHI, thisSample->satGHI,
+            int optGHI = fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].optimizedGHI2 : thisSample->forecastData[hoursAheadIndex].optimizedGHI1;
+            fprintf(fci->optimizedTSFile.fp, ",%.1f,%.1f,%.1f,%.1f,%.3f\n",
+                    thisSample->groundGHI,
+                    thisSample->satGHI,
                     (thisSample->forecastData[hoursAheadIndex].groupIsValid == OK) ? optGHI : -999,
-                    thisSample->clearskyGHI, fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].ktOpt : thisSample->forecastData[hoursAheadIndex].ktTargetNWP);
+                    thisSample->clearskyGHI,
+                    fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].ktOpt : thisSample->forecastData[hoursAheadIndex].ktTargetNWP);
         }
     }
 
@@ -1037,9 +1039,9 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, 
 
 int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
 {
-    int N = 0, sampleInd, modelIndex, hoursAfterSunriseIndex, ktIndex, i;
+    int N = 0, sampleInd, modelIndex, hoursAfterSunriseIndex, ktIndex, i, *optGHI;
     double diff;
-    double weight, weightTotal, meanMeasuredGHI, *optGHI;
+    double weight, weightTotal, meanMeasuredGHI;
     timeSeriesType *thisSample;
     modelStatsType *thisModelStats, *weightedErrVsGroundAllHAS, *satModelErr;
     modelRunType *modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][0][0] : &fci->hoursAheadGroup[hoursAheadIndex];
@@ -1198,7 +1200,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
                     }
                     // instead of each model having a separate rmse, they will have a composite rmse
                     if(0) {
-                        double beginOpt = *optGHI;
+                        int beginOpt = *optGHI;
                         weightTotal = 0;
                         *optGHI = 0;
 
@@ -1209,7 +1211,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
                                 weight /= 100.0; // weights are kept as ints 0-100; make 24 => .24
                                 // add up weight * GHI for each included forecast model
                                 if(thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] < 0) {
-                                    fprintf(stderr, "Problem: trying to add in a negative GHI: %.1f [%s, hoursAhead=%d, model=%s]\n", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex],
+                                    fprintf(stderr, "Problem: trying to add in a negative GHI: %d [%s, hoursAhead=%d, model=%s]\n", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex],
                                             dtToStringCsv2(&thisSample->dateTime), hoursAhead, thisModelStats->modelName);
                                 }
                                 *optGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
@@ -1229,9 +1231,9 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
 #ifdef DEBUG_HAS
                         fprintf(stderr, "weightedGHI=%.1f,groundGHI=%.1f\n", thisSample->optimizedGHI1, thisSample->groundGHI);
 #endif
-                        if(fabs(*optGHI - beginOpt) > 0.0001)
-                            fprintf(stderr, "optGHI recomputed: old=%.1f new=%.1f\n", beginOpt, *optGHI);
-                        
+                        if(fabs(*optGHI - beginOpt) > 0)
+                            fprintf(stderr, "optGHI recomputed: old=%d new=%d\n", beginOpt, *optGHI);
+
                         if(weightTotal > 1.5 || weightTotal < 0.5) {
                             sprintf(ErrStr, "Internal Error: model weights sum to %.2f, expecting 1.0\n", weightTotal);
                             FatalError("dumpModelMixRMSE()", ErrStr);

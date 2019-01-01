@@ -71,9 +71,9 @@ typedef enum {
     MKunset, regular
 } modelKindType;
 
-typedef enum {  // OK is valid; others are rejection codes
+typedef enum { // OK is valid; others are rejection codes
     zenith, groundLow, satLow, nwpLow, notHAS, notKt, OK
-} validType ;
+} validType;
 
 typedef struct {
     char *modelName; // short cut to modelName below
@@ -105,26 +105,28 @@ typedef struct {
 } modelRunType;
 
 typedef struct {
-    double modelGHI[MAX_MODELS];
+    int modelGHI[MAX_MODELS];
     validType groupIsValid;
-    double  ktSatGHI, // used for a correction scheme
-            ktTargetNWP, // this is the kt that's computed as, for example, ECMWF/CLR in the first leg
-            ktV4, // this is the kt that computed from a non-KTI first leg, i.e., just like old v4 -- not currently used
-            ktOpt, // this is the kt that computed as the 2nd of the ktTargetNWP run, = optimizedGHI1/CLR
-            optimizedGHI1, // this is the optimized GHI from the 1st leg
-            optimizedGHI2, // this is the optimized GHI from the 2nd leg
-            correctedOptimizedGHI;
+    double ktSatGHI, // used for a correction scheme
+        ktTargetNWP, // this is the kt that's computed as, for example, ECMWF/CLR in the first leg
+        ktV4, // this is the kt that computed from a non-KTI first leg, i.e., just like old v4 -- not currently used
+        ktOpt; // this is the kt that computed as the 2nd of the ktTargetNWP run, = optimizedGHI1/CLR
+    int optimizedGHI1, // this is the optimized GHI from the 1st leg
+        optimizedGHI2, // this is the optimized GHI from the 2nd leg
+        correctedOptimizedGHI;
     int ktIndexNWP, ktIndexOpt;
 } forecastDataType;
 
 // for each HA there is an NWP input file with the time series data
+
 typedef struct {
     dateTimeType dateTime;
-    double zenith, groundGHI, groundDNI, clearskyGHI, groundDiffuse, groundTemp, groundWind, groundRH, satGHI;
-    forecastDataType forecastData[MAX_HOURS_AHEAD];  // for a given dateTime we will have many HAs
+    double zenith;
+    int groundGHI, groundDNI, clearskyGHI, satGHI; // groundDiffuse, groundTemp, groundWind, groundRH, satGHI;
+    forecastDataType forecastData[MAX_HOURS_AHEAD]; // for a given dateTime we will have many HAs
     char sunIsUp;
     //dateTimeType sunrise;
-    int hoursAfterSunrise; 
+    int hoursAfterSunrise;
     char *siteName; // useful for multiple site runs
 } timeSeriesType;
 
@@ -238,6 +240,7 @@ typedef struct {
     char doModelPermutations;
     permutationType modelPermutations;
     char doKtNWP, doKtOpt, doKtBootstrap, inKtBootstrap, doKtAndNonKt;
+    char dumpFilterData;
 } forecastInputType;
 
 char *getModelName(forecastInputType *fci, int modelIndex);
@@ -247,7 +250,7 @@ int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
 int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex, int ktIndex);
 int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex, int ktIndex);
 int computeModelRMSE(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
-int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex,  int ktIndex, int useGroundReference);
+int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int useGroundReference);
 int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex);
 void fatalError(char *functName, char *errStr, char *file, int linenumber);
 void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);

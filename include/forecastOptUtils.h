@@ -29,6 +29,7 @@ extern "C" {
 void initForecastInfo(forecastInputType *fci);
 void incrementTimeSeries(forecastInputType *fci);
 int  readForecastData(forecastInputType *fci);
+int  readForecastDataNoNight(forecastInputType *fci);
 int  readDataFromLine(forecastInputType *fci, int hoursAheadIndex, timeSeriesType *thisSample, char *fields[], int numFields);
 int  parseDateTime(forecastInputType *fci, dateTimeType *dt, char **fields, int numFields);
 int  parseHourIndexes(forecastInputType *fci, char *optarg);
