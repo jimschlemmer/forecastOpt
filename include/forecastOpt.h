@@ -105,13 +105,13 @@ typedef struct {
 } modelRunType;
 
 typedef struct {
-    int modelGHI[MAX_MODELS];
+    float modelGHI[MAX_MODELS];
     validType groupIsValid;
     double ktSatGHI, // used for a correction scheme
         ktTargetNWP, // this is the kt that's computed as, for example, ECMWF/CLR in the first leg
         ktV4, // this is the kt that computed from a non-KTI first leg, i.e., just like old v4 -- not currently used
         ktOpt; // this is the kt that computed as the 2nd of the ktTargetNWP run, = optimizedGHI1/CLR
-    int optimizedGHI1, // this is the optimized GHI from the 1st leg
+    float optimizedGHI1, // this is the optimized GHI from the 1st leg
         optimizedGHI2, // this is the optimized GHI from the 2nd leg
         correctedOptimizedGHI;
     int ktIndexNWP, ktIndexOpt;
@@ -122,7 +122,7 @@ typedef struct {
 typedef struct {
     dateTimeType dateTime;
     double zenith;
-    int groundGHI, groundDNI, clearskyGHI, satGHI; // groundDiffuse, groundTemp, groundWind, groundRH, satGHI;
+    float groundGHI, groundDNI, clearskyGHI, satGHI; // groundDiffuse, groundTemp, groundWind, groundRH, satGHI;
     forecastDataType forecastData[MAX_HOURS_AHEAD]; // for a given dateTime we will have many HAs
     char sunIsUp;
     //dateTimeType sunrise;

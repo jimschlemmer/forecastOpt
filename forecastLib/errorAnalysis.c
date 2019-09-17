@@ -282,12 +282,12 @@ int filterForecastData(forecastInputType *fci, int hoursAheadIndex, int hoursAft
             fprintf(filterDump, ",%d", thisSample->hoursAfterSunrise);
             for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
                 if(modelRunData->hourlyModelStats[modelIndex].maskSwitchOn)
-                    fprintf(filterDump, ",%d", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
+                    fprintf(filterDump, ",%.1f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
             }
             fprintf(filterDump, ",%.2f", thisSample->zenith);
-            fprintf(filterDump, ",%d", thisSample->satGHI);
-            fprintf(filterDump, ",%d", thisSample->groundGHI);
-            fprintf(filterDump, ",%d", thisSample->clearskyGHI);
+            fprintf(filterDump, ",%.1f", thisSample->satGHI);
+            fprintf(filterDump, ",%.1f", thisSample->groundGHI);
+            fprintf(filterDump, ",%.1f", thisSample->clearskyGHI);
             fprintf(filterDump, ",%.2f", fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].ktOpt : thisSample->forecastData[hoursAheadIndex].ktTargetNWP);
             fprintf(filterDump, ",%d", fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].ktIndexOpt : thisSample->forecastData[hoursAheadIndex].ktIndexNWP);
             fprintf(filterDump, ",%s\n", validString(thisSample->forecastData[hoursAheadIndex].groupIsValid));
@@ -769,7 +769,8 @@ int computeOptimizedGHI(forecastInputType *fci, int hoursAheadIndex)
     timeSeriesType *thisSample;
     modelStatsType *thisModelStats;
     modelRunType *modelRun;
-    int sampleInd, modelIndex, *optGHI;
+    int sampleInd, modelIndex;
+    float *optGHI;
     int ktIndex;
     double weight;
 
@@ -906,7 +907,7 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
                 weight = fci->skipPhase2 ? thisModelStats->optimizedWeightPhase1 : thisModelStats->optimizedWeightPhase2;
 
                 if(thisModelStats->maskSwitchOn) {
-                    fprintf(fci->optimizedTSFile.fp, ",%d", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
+                    fprintf(fci->optimizedTSFile.fp, ",%.1f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
                     if(codeIsOK(validCode))
                         fprintf(fci->optimizedTSFile.fp, ",%d", weight);
                     else
@@ -918,8 +919,8 @@ int dumpHourlyOptimizedTS(forecastInputType *fci, int hoursAheadIndex)
             }
 
             // now print the ground data, satellite GHI and optimized GHI
-            int optGHI = fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].optimizedGHI2 : thisSample->forecastData[hoursAheadIndex].optimizedGHI1;
-            fprintf(fci->optimizedTSFile.fp, ",%d,%d,%d,%d,%.3f\n",
+            float optGHI = fci->inKtBootstrap ? thisSample->forecastData[hoursAheadIndex].optimizedGHI2 : thisSample->forecastData[hoursAheadIndex].optimizedGHI1;
+            fprintf(fci->optimizedTSFile.fp, ",%.1f,%.1f,%.1f,%.1f,%.3f\n",
                     thisSample->groundGHI,
                     thisSample->satGHI,
                     (thisSample->forecastData[hoursAheadIndex].groupIsValid == OK) ? optGHI : -999,
@@ -1040,7 +1041,8 @@ int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, 
 
 int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
 {
-    int N = 0, sampleInd, modelIndex, hoursAfterSunriseIndex, ktIndex, i, *optGHI;
+    int N = 0, sampleInd, modelIndex, hoursAfterSunriseIndex, ktIndex, i;
+    float *optGHI;
     double diff;
     double weight, weightTotal, meanMeasuredGHI;
     timeSeriesType *thisSample;
@@ -1201,7 +1203,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
                     }
                     // instead of each model having a separate rmse, they will have a composite rmse
                     if(0) {
-                        int beginOpt = *optGHI;
+                        float beginOpt = *optGHI;
                         weightTotal = 0;
                         *optGHI = 0;
 
@@ -1212,7 +1214,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
                                 weight /= 100.0; // weights are kept as ints 0-100; make 24 => .24
                                 // add up weight * GHI for each included forecast model
                                 if(thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] < 0) {
-                                    fprintf(stderr, "Problem: trying to add in a negative GHI: %d [%s, hoursAhead=%d, model=%s]\n", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex],
+                                    fprintf(stderr, "Problem: trying to add in a negative GHI: %.1f [%s, hoursAhead=%d, model=%s]\n", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex],
                                             dtToStringCsv2(&thisSample->dateTime), hoursAhead, thisModelStats->modelName);
                                 }
                                 *optGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * weight);
@@ -1233,7 +1235,7 @@ int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex)
                         fprintf(stderr, "weightedGHI=%.1f,groundGHI=%.1f\n", thisSample->optimizedGHI1, thisSample->groundGHI);
 #endif
                         if(fabs(*optGHI - beginOpt) > 0)
-                            fprintf(stderr, "optGHI recomputed: old=%d new=%d\n", beginOpt, *optGHI);
+                            fprintf(stderr, "optGHI recomputed: old=%.1f new=%.1f\n", beginOpt, *optGHI);
 
                         if(weightTotal > 1.5 || weightTotal < 0.5) {
                             sprintf(ErrStr, "Internal Error: model weights sum to %.2f, expecting 1.0\n", weightTotal);

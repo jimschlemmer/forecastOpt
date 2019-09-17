@@ -66,7 +66,7 @@ int readForecastDataNoNight(forecastInputType *fci)
 
     int i;
     for(hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
-        sprintf(pattern, "HA%d.csv", hoursAheadIndex);
+        sprintf(pattern, ".HA%d.", hoursAheadIndex);
         if((filenames = readDirInOrder(fci->inputDirectory, pattern, &numFiles)) == NULL)
             FatalError("readForecastDataNoNight()", "Something went wrong reading input directory");
         for(i = 0; i < numFiles; i++) {
@@ -415,7 +415,7 @@ void parseNwpHeaderLine(forecastInputType *fci, char *filename)
     fci->numHeaderFields = split(tempLine + 1, fields, MAX_FIELDS, ","); /* split path */
 
     if(fci->numHeaderFields != 4) {
-        sprintf(ErrStr, "%s : Too few columns in header line 1 to work with in input file:\n%s\n", filename, fci->forecastHeaderLine1);
+        sprintf(ErrStr, "%s : Too few columns in header line 1 (need site,HA,lat,lon) in input file:\n%s\n", filename, fci->forecastHeaderLine1);
         FatalError("parseNwpHeaderLine()", ErrStr);
     }
 
@@ -589,7 +589,7 @@ int readDataFromLine(forecastInputType *fci, int hoursAheadIndex, timeSeriesType
      */
 
     if(thisSample->groundGHI < MIN_IRR || thisSample->groundGHI > MAX_IRR) {
-        sprintf(ErrStr, "Got bad surface GHI at line %d: %d", fci->forecastLineNumber, thisSample->groundGHI);
+        sprintf(ErrStr, "Got bad surface GHI at line %d: %.1f", fci->forecastLineNumber, thisSample->groundGHI);
         thisSample->groundGHI = 0;
         //FatalError("readDataFromLine()", ErrStr);
     }
@@ -600,7 +600,7 @@ int readDataFromLine(forecastInputType *fci, int hoursAheadIndex, timeSeriesType
 
     thisSample->clearskyGHI = atoi(fields[fci->clearskyGHICol]);
     if(thisSample->clearskyGHI < MIN_IRR || thisSample->clearskyGHI > MAX_IRR) {
-        sprintf(ErrStr, "Got bad clearsky GHI at line %d: %d", fci->forecastLineNumber, thisSample->clearskyGHI);
+        sprintf(ErrStr, "Got bad clearsky GHI at line %d: %.1f", fci->forecastLineNumber, thisSample->clearskyGHI);
         FatalError("readDataFromLine()", ErrStr);
     }
 #ifdef WRITE_WARNINGS
@@ -633,7 +633,7 @@ int readDataFromLine(forecastInputType *fci, int hoursAheadIndex, timeSeriesType
     else {
         // This is before data is filtered, mind you
         if(fci->verbose && thisSample->clearskyGHI > 500 && thisSample->forecastData[hoursAheadIndex].modelGHI[fci->ktModelColumn] < 5) {
-            sprintf(ErrStr, "got low NWP: clr=%d ktModelColumn=%d GHI=%d\n", thisSample->clearskyGHI, fci->ktModelColumn, thisSample->forecastData[hoursAheadIndex].modelGHI[fci->ktModelColumn]);
+            sprintf(ErrStr, "got low NWP: clr=%.1f ktModelColumn=%d GHI=%.1f\n", thisSample->clearskyGHI, fci->ktModelColumn, thisSample->forecastData[hoursAheadIndex].modelGHI[fci->ktModelColumn]);
             fprintf(stderr, "%s", ErrStr);
         }
         thisSample->forecastData[hoursAheadIndex].ktTargetNWP = ((double) thisSample->forecastData[hoursAheadIndex].modelGHI[fci->ktModelColumn]) / ((double) thisSample->clearskyGHI);
@@ -668,13 +668,13 @@ int readDataFromLine(forecastInputType *fci, int hoursAheadIndex, timeSeriesType
 #endif
 
 #ifdef DUMP_ALL_DATA
-        fprintf(stderr, "%s,%d,%d", dtToStringCsv2(&thisSample->dateTime), thisSample->groundGHI, thisSample->satGHI);
+        fprintf(stderr, "%s,%.0f,%.0f", dtToStringCsv2(&thisSample->dateTime), thisSample->groundGHI, thisSample->satGHI);
         for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
             //hoursAheadIndex = fci->modelInfo[modelIndex].hoursAheadIndex;
             //fprintf(stderr, ",%.1f", thisSample->nwpData[modelIndex]);
-            fprintf(stderr, ",%d", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
+            fprintf(stderr, ",%.0f", thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex]);
         }
-        fprintf(stderr, ",%d,%.3f,%d\n", thisSample->clearskyGHI, thisSample->forecastData[hoursAheadIndex].ktTargetNWP, thisSample->forecastData[hoursAheadIndex].ktIndexNWP);
+        fprintf(stderr, ",%.0f,%.3f,%d\n", thisSample->clearskyGHI, thisSample->forecastData[hoursAheadIndex].ktTargetNWP, thisSample->forecastData[hoursAheadIndex].ktIndexNWP);
     }
 #endif
 
@@ -734,7 +734,7 @@ void setKtIndex(forecastInputType *fci, timeSeriesType *thisTS, int hoursAheadIn
     if(fci->inKtBootstrap) {
         thisSample->ktOpt = thisTS->clearskyGHI > 1 ? thisSample->optimizedGHI1 / thisTS->clearskyGHI : 0;
         kt = thisSample->ktOpt;
-        fprintf(stderr, "setKtIndex:%s HA%d CLR=%d optimzedGHI1=%d ktOpt=%.3f\n", dtToString(&thisTS->dateTime), hoursAheadIndex + 1, thisTS->clearskyGHI, thisSample->optimizedGHI1, thisSample->ktOpt);
+        fprintf(stderr, "setKtIndex:%s HA%d CLR=%.0f optimzedGHI1=%.1f ktOpt=%.3f\n", dtToString(&thisTS->dateTime), hoursAheadIndex + 1, thisTS->clearskyGHI, thisSample->optimizedGHI1, thisSample->ktOpt);
         ktIndex = &thisSample->ktIndexOpt;
     }
     else {
@@ -933,7 +933,7 @@ void initForecastInfo(forecastInputType * fci)
     fci->multipleSites = False;
     fci->gotConfigFile = False;
     fci->gotForecastFile = False;
-    fci->weightSumLowCutoff = 92; // experiment with other values such as 90 < sum < 110 ?
+    fci->weightSumLowCutoff = 92; // experiment with other values such as 90 < sum < 110 ?  // normally 92 and 108
     fci->weightSumHighCutoff = 108;
     fci->startHourLowIndex = -1;
     fci->startHourHighIndex = -1;
