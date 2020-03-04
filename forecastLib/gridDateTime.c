@@ -336,6 +336,22 @@ char *dtToStringCsv2(dateTimeType *dt)
     return str;
 }
 
+char *dtToStringCsvCompact(dateTimeType *dt)
+{
+    static char str[256];
+    
+    sprintf(str, "%d,%d,%d,%d,%d", dt->year, dt->month, dt->day, dt->hour, dt->min);
+    return str;
+}
+
+char *dtToStringCsvNoPadding(dateTimeType *dt)
+{
+    static char str[256];
+    
+    sprintf(str, "%d,%d,%d,%d,%d", dt->year, dt->month, dt->day, dt->hour, dt->min);
+    return str;
+}
+
 char *dtToStringFilename(dateTimeType *dt)
 {
     static char str[256];

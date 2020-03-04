@@ -44,9 +44,9 @@ extern "C" {
 
 #define FatalError(function, message) fatalError(function, message, __FILE__, __LINE__)
 
-#define MAX_MODELS 10
+#define MAX_MODELS 6
 #define MAX_SITES 500
-#define MAX_HOURS_AHEAD 48
+#define MAX_HOURS_AHEAD 170
 #define MAX_HOURS_AFTER_SUNRISE 16
 #define MIN_GHI_VAL 5
 #define MAX_KT_BINS 10
@@ -64,6 +64,7 @@ extern "C" {
 
 #define USE_GROUND_REF 1
 #define USE_SATELLITE_REF 0
+#define MAX_METRIC_RUNS 5000
 
 //#define isContributingModel(model) (model.isActive && !model.isReference)
 
@@ -74,6 +75,49 @@ typedef enum {
 typedef enum { // OK is valid; others are rejection codes
     zenith, groundLow, satLow, nwpLow, notHAS, notKt, OK
 } validType;
+
+typedef enum {
+    RMSE, Cost
+} errorMetricType;
+
+// 'Metric' is the measurement that is used to optimize: RMSE or Cost, for example
+
+// the next two typedefs are for the cost algorithm
+
+typedef struct {
+    dateTimeType dateTime;
+    char isValid;
+    double v3,
+    v4,
+    v3_v4,
+    c_v3_v4,
+    peak_to_trough_v4,
+    peak_v4,
+    trough_v4,
+    recharge_v3_v4,
+    state_of_charge,
+    curtailment_v4,
+    min_peak_to_trough_v4, // these last 5 are cumulative sums for the ultimate versions in the cost_type struct
+    storage_size,
+    total_recharge,
+    total_energy_v3_over,
+    total_energy_v4;
+} cost_timeseries_type;
+
+typedef struct {
+    double max_rate,
+    oversize,
+    max_battery_size,
+    storage_size,
+    total_recharge,
+    total_recharge_cost,
+    min_peak_to_trough_v4,
+    total_cost,
+    total_curtailment,
+    total_loss,
+    total_energy_v3_over, // is the total energy V3 obtained (generated) by the array including oversizing
+    total_energy_v4; // is the same forecasted V4 quantity by without oversizing (woo)
+} cost_type;
 
 typedef struct {
     char *modelName; // short cut to modelName below
@@ -87,6 +131,9 @@ typedef struct {
     int N;
     char isActive, maskSwitchOn, isReference, tooMuchDataMissing, isContributingModel;
     long long powerOfTen;
+    //// these are PV Cost calcualtion parameters
+    cost_type lowestCostParameters;
+    ////
 } modelStatsType;
 
 typedef struct {
@@ -98,22 +145,23 @@ typedef struct {
     modelStatsType hourlyModelStats[MAX_MODELS];
     modelStatsType weightedModelStatsVsGround;
     modelStatsType weightedModelStatsVsSat;
-    double optimizedRMSEphase1, optimizedPctRMSEphase1;
-    double optimizedRMSEphase2, optimizedPctRMSEphase2;
-    long phase1RMSEcalls, phase2RMSEcalls, phase1SumWeightsCalls, phase2SumWeightsCalls;
+    double optimizedMetricPhase1, optimizedPctMetricPhase1;
+    double optimizedMetricPhase2, optimizedPctMetricPhase2;
+    long phase1MetricCalls, phase2MetricCalls, phase1SumWeightsCalls, phase2SumWeightsCalls;
     double correctionVarA, correctionVarB;
 } modelRunType;
+
 
 typedef struct {
     float modelGHI[MAX_MODELS];
     validType groupIsValid;
     double ktSatGHI, // used for a correction scheme
-        ktTargetNWP, // this is the kt that's computed as, for example, ECMWF/CLR in the first leg
-        ktV4, // this is the kt that computed from a non-KTI first leg, i.e., just like old v4 -- not currently used
-        ktOpt; // this is the kt that computed as the 2nd of the ktTargetNWP run, = optimizedGHI1/CLR
+    ktTargetNWP, // this is the kt that's computed as, for example, ECMWF/CLR in the first leg
+    ktV4, // this is the kt that computed from a non-KTI first leg, i.e., just like old v4 -- not currently used
+    ktOpt; // this is the kt that computed as the 2nd of the ktTargetNWP run, = optimizedGHI1/CLR
     float optimizedGHI1, // this is the optimized GHI from the 1st leg
-        optimizedGHI2, // this is the optimized GHI from the 2nd leg
-        correctedOptimizedGHI;
+    optimizedGHI2, // this is the optimized GHI from the 2nd leg
+    correctedOptimizedGHI;
     int ktIndexNWP, ktIndexOpt;
 } forecastDataType;
 
@@ -200,8 +248,8 @@ typedef struct {
     int numContribModels;
     int numHeaderFields;
     int numDivisions;
-    int increment1, increment2, refinementBase;
-    int weightSumLowCutoff, weightSumHighCutoff;
+    int increment1, increment2, numDivisions2;
+    int weightSum, weightSumLowCutoff, weightSumHighCutoff;
     int inPhase1;
     int maxModelIndex;
     int numTotalSamples;
@@ -241,6 +289,12 @@ typedef struct {
     permutationType modelPermutations;
     char doKtNWP, doKtOpt, doKtBootstrap, inKtBootstrap, doKtAndNonKt;
     char dumpFilterData;
+    errorMetricType errorMetric;
+    char filterOnSunUp;
+    cost_timeseries_type *lowestCostTimeSeries;
+    cost_type lowestCost;
+    int numMetricRuns;
+    modelRunType savedModelRuns[MAX_METRIC_RUNS];
 } forecastInputType;
 
 char *getModelName(forecastInputType *fci, int modelIndex);
@@ -249,8 +303,10 @@ void runOptimizer(forecastInputType *fci, int hourIndex);
 int computeHourlyDifferences(forecastInputType *fci, int hourIndex);
 int computeHourlyBiasErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex, int ktIndex);
 int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex, int ktIndex);
+int computeHourlyCost(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 int computeModelRMSE(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int useGroundReference);
+int computeHourlyCostWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int useGroundReference, int doDump);
 int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex);
 void fatalError(char *functName, char *errStr, char *file, int linenumber);
 void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);

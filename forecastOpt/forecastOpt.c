@@ -61,7 +61,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     //static char tabDel[32];
     //sprintf(tabDel, "%c", 9);  // ascii 9 = TAB
 
-    while((c = getopt(argC, argV, "b:kpfa:c:dto:s:HhvSVr:w:i:BuK:")) != EOF) {
+    while((c = getopt(argC, argV, "b:kpfa:c:dto:s:HhvSVr:w:i:BuK:C")) != EOF) {
         switch(c) {
             case 'd':
             {
@@ -117,7 +117,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
             case 'r':
             {
                 if(!parseHourIndexes(fci, optarg)) {
-                    fprintf(stderr, "Failed to process archive dates\n");
+                    fprintf(stderr, "Failed to process hour indexes\n");
                     return False;
                 }
                 break;
@@ -149,8 +149,10 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
             }
             case 'w':
             {
-                fci->modelMixFileInput.fileName = strdup(optarg);
-                fci->runWeightedErrorAnalysis = True;
+                if(!parseWeightSumLimits(fci, optarg)) {
+                    fprintf(stderr, "Failed to process -w flag args\n");
+                    return False;
+                }
                 break;
             }
             case 'P':
@@ -182,6 +184,12 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                 fci->dumpFilterData = True;
                 break;
             }
+            case 'C':
+            {
+                fci->errorMetric = Cost;
+                break;
+            }
+
             default: return False;
         }
     }
@@ -213,15 +221,15 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
         For numDivisions = 10, increment1 = 100/10 = 10 => 10,20,30,40,50,60,70,80,90,100
      */
     fci->increment1 = 100 / fci->numDivisions; // numDivisions=10 => increment1=10, 5 => 20, 25 => 4
-    fci->refinementBase = -(fci->increment1); // might be better off with -(refinementBase/2)
-    fci->increment2 = MAX(1, (2 * fci->increment1 / fci->numDivisions)); // 2*20/5 = 8, 2*14/7 = 4, 2*10/10 = 2, 2*4/25 = 0
+    fci->numDivisions2 = -(fci->increment1)/2; // might be better off with -(numDivisions2/2)
+    fci->increment2 = MAX(1, (fci->increment1 / fci->numDivisions)); // 2*20/5 = 8, 2*14/7 = 4, 2*10/10 = 2, 2*4/25 = 1
 
     fprintf(stderr, "\n======== Weight Search Settings =========\n");
     fprintf(stderr, "===== increment1 = %d\n", fci->increment1);
     fprintf(stderr, "===== numDivisions = %d\n", fci->numDivisions);
     if(!fci->skipPhase2) {
         fprintf(stderr, "===== increment2 = %d\n", fci->increment2);
-        fprintf(stderr, "===== refinementBase = %d\n", fci->refinementBase);
+        fprintf(stderr, "===== numDivisions2 = %d\n", fci->numDivisions2);
     }
     fprintf(stderr, "===========================================\n");
 
@@ -232,7 +240,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
 void help(void)
 {
     version();
-    printf("usage: %s [-dsmpkSBfvh] [-r beginHourIndex,endHourIndex] [-a begin,end] [-o outputDir] [-b divisions] forecastFile\n", Progname);
+    printf("usage: %s [-dsmpkSBfvh] [-r beginHourIndex,endHourIndex] [-a begin,end] [-w low,high] [-o outputDir] [-b divisions] forecastFile\n", Progname);
     printf("where: -d = comma separated input [TAB]\n");
     printf("       -s maxHours = set max hours after sunrise\n");
     printf("       -p = skip phase 2 optimization\n");
@@ -240,6 +248,7 @@ void help(void)
     printf("       -S = use satellite model data as reference\n");
     printf("       -r beginHourIndex,endHourIndex = specify which hour ahead indexes to start and end with\n");
     printf("       -a begin,end = specify begin and end dates in YYYYMMDD,YYYYMMDD format\n");
+    printf("       -w low,high = specify low and high weight sum cutoffs [92,108]\n");
     printf("       -o outputDir = specify where output files go\n");
     printf("       -b divisions = specify how many intervals the 0..100 weight range is divided into [def=7]\n");
     printf("       -B = run in kt bootstrap mode\n");
@@ -266,7 +275,10 @@ void processForecast(forecastInputType *fci)
     fprintf(stderr, "%s\n", dtToStringDateTime(&fci->endDate));
     fprintf(stderr, "=== Weight sum range: %d to %d\n", fci->weightSumLowCutoff, fci->weightSumHighCutoff);
 
-    readForecastDataNoNight(fci); // this reads in all the forecast data (either single site or composite) for all forecast horizons
+    if(fci->errorMetric == RMSE)
+        readForecastDataNoNight(fci); // this reads in all the forecast data (either single site or composite) for all forecast horizons
+    else
+        readForecastData(fci);
 
     if(fci->runHoursAfterSunrise)
         copyHoursAfterData(fci);
@@ -283,7 +295,7 @@ void processForecast(forecastInputType *fci)
 
     //for(permutationIndex = 1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
     //for(permutationIndex = 31; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
-    for(permutationIndex = fci->modelPermutations.numPermutations-1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
+    for(permutationIndex = fci->modelPermutations.numPermutations - 1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
         //    for(permutationIndex = fci->modelPermutations.numPermutations-1; permutationIndex < fci->modelPermutations.numPermutations; permutationIndex++) {
         if(fci->doKtBootstrap) {
             fci->numKtBins = 1;

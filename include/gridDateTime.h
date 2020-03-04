@@ -28,6 +28,8 @@ int isDateTimeSet(dateTimeType *dt);
 char *dtToString(dateTimeType *dt);
 char *dtToStringCsv(dateTimeType *dt);
 char *dtToStringCsv2(dateTimeType *dt);
+char *dtToStringCsvCompact(dateTimeType *dt);
+char *dtToStringCsvNoPadding(dateTimeType *dt);
 char *dtToStringDateTime(dateTimeType *dt);
 char *dtToString2(dateTimeType *dt);
 char *dtToStringFilename(dateTimeType *dt);
