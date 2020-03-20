@@ -3,16 +3,19 @@
 #include <stdlib.h>
 #include <omp.h>
 #include "forecastOpt.h"
+#include "forecastOptUtils.h"
 
 void saveModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 void loadOptimizedModelWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 int sumWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int numModels);
 void dumpWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunrise, int ktIndex, int phase);
 int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
-int runCostWithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump);
+int runCostWithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump, int runIndex);
 int weightsInRange(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 int weightsRangeExceeded(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
-int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump);
+int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump, int runIndex);
+void cleanUpTimeSeries(forecastInputType *fci, int hourAheadIndex);
+int cmpcost(const void *p1, const void *p2);
 
 time_t Start_t;
 double MinRmse;
@@ -112,7 +115,7 @@ char *getElapsedTime(time_t start_t)
     return (timeStr);
 }
 
-int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump)
+int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump, int runIndex)
 {
     int retVal;
 
@@ -121,7 +124,7 @@ int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadI
 
     }
     else if(fci->errorMetric == Cost) {
-        retVal = runCostWithWeights(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, doDump);
+        retVal = runCostWithWeights(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, doDump, runIndex);
     }
 
     else {
@@ -129,22 +132,15 @@ int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadI
         exit(1);
     }
 
-    // parallel processing code mod -- save all model (RMSE or cost) runs and sort through them later
-    // scale savedModelRuns if necessary, blocksize goes 1000,2000,4000,8000, etc.
-    memcpy(&fci->savedModelRuns[fci->numMetricRuns++], modelRun, sizeof (modelRunType));
-    if(fci->numMetricRuns == MAX_METRIC_RUNS) {
-        fprintf(stderr, "Ran out of memory in runWeightSet()\n");
-        exit(1);
-    }
-    //
-
     return retVal;
 }
 
-int runCostWithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump)
+int runCostWithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump, int runIndex)
 {
     //    int weightSum;
     double minCost;
+
+    //fprintf(stderr, "Running with runIndex %d run on thread %d\n", runIndex, omp_get_thread_num());
 
     if(fci->inPhase1) {
         minCost = modelRun->optimizedMetricPhase1;
@@ -176,28 +172,14 @@ int runCostWithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
 #ifdef WEIGHT_TRIALS    
     fprintf(stderr, " RUNNING\n");
 #endif        
-    //if(weightSum >= fci->weightSumLowCutoff && weightSum <= fci->weightSumHighCutoff) {
-
-    //fprintf(stderr, "running cost algo...\n");
-    doDump = 0;
-    /*
-        int CMMindex = getModelIndexByName(fci, "CMM-east");
-        int wt =  modelRun->hourlyModelStats[CMMindex].weight;
-        fprintf(stderr, "CMMindex=%d weight=%d\n", CMMindex, wt);
-        if(wt == 100) {
-            doDump = 1;
-        }
-     */
-    computeHourlyCostWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, USE_GROUND_REF, doDump);
-    //fprintf(stderr, "finished...\n");
+    computeHourlyCostWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, USE_GROUND_REF, doDump, runIndex);
 
     return True; // skip all the saving of parameters if we're running in parallel
 
 
-
-
-
-
+    
+    
+    
 
     //fprintf(stderr, "checking minCost...\n");
     double lowestCost = modelRun->weightedModelStatsVsGround.lowestCostParameters.total_cost;
@@ -290,11 +272,200 @@ int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
 #define CheckWeights(n) { sumWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, n); if(fci->weightSum > fci->weightSumHighCutoff) { stats[n]->weight = 0; break;} }
 
 //#define OptimizeWeights() { sumWeights(fci, n); if(fci->weightSum > fci->weightSumHighCutoff) break; if(fci->weightSum >= fci->weightSumLowCutoff) { /*runWeightSet(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);*/ } }
-#define OptimizeWeights() { if(fci->weightSum >= fci->weightSumLowCutoff) { runWeightSet(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 0);} }
+#define OptimizeWeights() { if(fci->weightSum >= fci->weightSumLowCutoff) { runWeightSet(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 0, 0);} }
 //#define OptimizeWeights() { if(fci->weightSum >= fci->weightSumLowCutoff) { numRuns++;} }
 
 
 #define NESTED_OPT_DEBUG
+
+// In order to optimize nested loops, the 
+
+int runOptimizerParallel(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex)
+{
+    int modelIndex, numActiveModels = 0;
+    int i, i1, i2, i3, i4, i5, i6;
+    modelStatsType * stats[MAX_MODELS + 1]; //*stats[1], *stats[2], ...
+    modelRunType *modelRun;
+
+    modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
+
+    fci->inPhase1 = True;
+
+    fprintf(stderr, "Max num threads = %d\n", omp_get_max_threads());
+    fprintf(stderr, "Num processors  = %d\n", omp_get_num_procs());
+    // intialize things
+    // clearHourlyErrorFields(fci, hoursAheadIndex);   no,no
+
+    //    if(!filterForecastData(fci, hoursAheadIndex, hoursAfterSunriseIndex))
+    //        return False;
+
+    //int hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
+    for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+        //modelData->hourlyModelStats[modelIndex].isActive = (getMaxHoursAhead(fci, modelIndex) >= hoursAhead);
+        if(modelRun->hourlyModelStats[modelIndex].maskSwitchOn) {
+            // activeModel[numActiveModels] = modelIndex;   
+            stats[numActiveModels + 1] = &modelRun->hourlyModelStats[modelIndex];
+            numActiveModels++;
+        }
+    }
+
+    if(numActiveModels < 1) {
+        fprintf(stderr, "\n!!! Warning: no models active for current hour; no data to work with\n");
+        return False;
+    }
+    if(numActiveModels > 11) {
+        fprintf(stderr, "\n!!! Warning: number of active models [%d] > current max of 11\n", numActiveModels);
+        return False;
+    }
+    modelRun->optimizedPctMetricPhase1 = 10000;
+    modelRun->optimizedMetricPhase1 = 10000;
+    modelRun->phase1MetricCalls = 0;
+    modelRun->phase2MetricCalls = 0;
+    modelRun->phase1SumWeightsCalls = 0;
+    modelRun->phase2SumWeightsCalls = 0;
+
+    if(modelRun->numValidSamples == 0)
+        return True;
+
+    Start_t = time(NULL);
+    //    int numRuns = 0;
+
+    /*
+        int tid, nthreads;
+    #pragma omp parallel shared(nthreads) private(i1,i2,i3,i4,i5,i6,i7,i8,i9,i10,tid)
+        tid = omp_get_thread_num();
+        if(tid == 0) {
+            nthreads = omp_get_num_threads();
+            printf("Number of threads = %d\n", nthreads);
+        }
+
+        printf("Thread %d starting...\n", tid);
+     */
+
+    // allocate list for lowCost list that all threads report their results to
+#define MAX_WEIGHT_SETS 15000
+    fci->lowCostList = (cost_type **) malloc(MAX_WEIGHT_SETS * sizeof (cost_type *));
+
+    // this is all pretty hard-coded right now
+    int inc = fci->increment1;
+    int numGoodWeightSets = 0;
+    for(i1 = 0; i1 <= fci->numDivisions; i1++) {
+        for(i2 = 0; i2 <= fci->numDivisions; i2++) {
+            for(i3 = 0; i3 <= fci->numDivisions; i3++) {
+                for(i4 = 0; i4 <= fci->numDivisions; i4++) {
+                    for(i5 = 0; i5 <= fci->numDivisions; i5++) {
+                        for(i6 = 0; i6 <= fci->numDivisions; i6++) {
+                            int sum = i1 * inc + i2 * inc + i3 * inc + i4 * inc + i5 * inc + i6*inc;
+                            if(sum >= fci->weightSumLowCutoff && sum <= fci->weightSumHighCutoff) {
+                                fci->lowCostList[numGoodWeightSets] = (cost_type *) malloc(sizeof (cost_type));
+                                fci->lowCostList[numGoodWeightSets]->weights[0] = i1*inc;
+                                fci->lowCostList[numGoodWeightSets]->weights[1] = i2*inc;
+                                fci->lowCostList[numGoodWeightSets]->weights[2] = i3*inc;
+                                fci->lowCostList[numGoodWeightSets]->weights[3] = i4*inc;
+                                fci->lowCostList[numGoodWeightSets]->weights[4] = i5*inc;
+                                fci->lowCostList[numGoodWeightSets]->weights[5] = i6*inc;
+                                numGoodWeightSets++;
+                            }
+                        }
+                    }
+                }
+            } // that's 
+        } // a
+    } // lot
+
+    fprintf(stderr, "Got %d good weight sets\n", numGoodWeightSets);
+
+    cleanUpTimeSeries(fci, hoursAheadIndex);
+
+    ///////// Main Loop ////////////////
+#pragma omp parallel for schedule(static)
+    for(i = 0; i < numGoodWeightSets; i++) {
+        runWeightSet(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 0, i);
+    }
+    ////////////////////////////////////
+
+    qsort(fci->lowCostList, numGoodWeightSets, sizeof (cost_type *), cmpcost);
+
+    /// dump sorted cost data
+    fprintf(stderr, "#modelWeights,total_cost,max_rate,oversize,max_battery_size,storage_size,total_recharge,total_recharge_cost,min_peak_to_trough_v4,total_curtailment,total_loss,total_energy_v3_over,total_energy_v4\n");
+    for(i = 0; i < numGoodWeightSets; i++) {
+        int sum = 0;
+        for(modelIndex = 0; modelIndex < numActiveModels; modelIndex++) {
+            fprintf(stderr, "%s=%2d ", getModelName(fci, modelIndex), fci->lowCostList[i]->weights[modelIndex]);
+            sum += fci->lowCostList[i]->weights[modelIndex];
+        }
+        fprintf(stderr, "sum=%d,", sum);
+
+        cost_type *c = fci->lowCostList[i];
+        fprintf(stderr, "%.1f,%.02f,%.02f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f\n",
+                c->total_cost, c->max_rate, c->oversize, c->max_battery_size, c->storage_size, c->total_recharge, c->total_recharge_cost, c->min_peak_to_trough_v4, c->total_curtailment, c->total_loss, c->total_energy_v3_over, c->total_energy_v4);
+    }
+
+    // compositeGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * ((float) modelWeights[modelIndex])/100);
+/*
+    for(modelIndex = 0; modelIndex < numActiveModels; modelIndex++) {
+        fprintf(stderr, "%s=%2d ", getModelName(fci, modelIndex), goodSums[lowCostInd][modelIndex]);
+    }
+    fprintf(stderr, "\n");
+*/
+    fprintf(stderr, "\n=== Total Elapsed time : %ld seconds\n", time(NULL) - Start_t);
+
+    exit(0);
+
+    fci->inPhase1 = False;
+    //   fprintf(stderr, "Number of RMSE/cost calls = %d\n", numRuns);
+
+#ifdef NESTED_OPT_DEBUG
+    char *metric = fci->errorMetric == RMSE ? "RMSE" : "Cost";
+    double minMetric = fci->errorMetric == RMSE ? modelRun->optimizedPctMetricPhase1 * 100 : modelRun->optimizedPctMetricPhase1;
+    fprintf(stderr, "\n=== Elapsed time for phase 1: %s [%s calls = %ld] [%s = %.2f%%]\n", getElapsedTime(Start_t), metric, modelRun->phase1MetricCalls, metric, minMetric);
+#endif    
+    dumpWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 1);
+
+
+#ifdef NESTED_OPT_DEBUG
+    metric = fci->errorMetric == RMSE ? "RMSE" : "Cost";
+    minMetric = fci->errorMetric == RMSE ? modelRun->optimizedPctMetricPhase2 * 100 : modelRun->optimizedPctMetricPhase2;
+    fprintf(stderr, "\n=== Elapsed time for phase 2: %s [%s calls = %ld] [%s = %.2f%%]\n", getElapsedTime(Start_t), metric, modelRun->phase2MetricCalls, metric, minMetric);
+#endif    
+    dumpWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 2);
+
+    return True;
+}
+
+int cmpcost(const void *p1, const void *p2)
+{
+    cost_type *pp1 = *(cost_type **) p1;
+    cost_type *pp2 = *(cost_type **) p2;
+
+    if(pp1->total_cost < pp2->total_cost) return -1;
+    if(pp1->total_cost > pp2->total_cost) return 1;
+    return 0;
+}
+
+// this just gets rid of everything except 'OK' and night data -- in prep for the cost algorithm
+
+void cleanUpTimeSeries(forecastInputType *fci, int hoursAheadIndex)
+{
+    int sampleInd, newNumSamples = 0;
+    timeSeriesType *thisSample, *newTimeSeries;
+
+    if((newTimeSeries = (timeSeriesType *) malloc(sizeof (timeSeriesType) * fci->numTotalSamples)) == NULL) {
+        fprintf(stderr, "Memory alloc failure in cleanUpTimeSeries()\n");
+        exit(1);
+    }
+
+    for(sampleInd = 0; sampleInd < fci->numTotalSamples; sampleInd++) {
+        thisSample = &fci->timeSeries[sampleInd];
+        if(thisSample->forecastData[hoursAheadIndex].groupIsValid == OK || thisSample->forecastData[hoursAheadIndex].groupIsValid == zenith) {
+            memcpy(&newTimeSeries[newNumSamples], &fci->timeSeries[sampleInd], sizeof (timeSeriesType));
+            newNumSamples++;
+        }
+    }
+
+    fci->timeSeries = newTimeSeries;
+    fci->numTotalSamples = newNumSamples;
+}
 
 int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex)
 {
@@ -306,9 +477,6 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     modelRun = fci->runHoursAfterSunrise ? &fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex] : &fci->hoursAheadGroup[hoursAheadIndex];
 
     fci->inPhase1 = True;
-
-    // for parallel processing, we need to save each run of the RMSE/cost algo runs
-    fci->numMetricRuns = 0;
 
     // intialize things
     // clearHourlyErrorFields(fci, hoursAheadIndex);   no,no
@@ -347,19 +515,19 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
     Start_t = time(NULL);
     //    int numRuns = 0;
 
-/*
-    int tid, nthreads;
-#pragma omp parallel shared(nthreads) private(i1,i2,i3,i4,i5,i6,i7,i8,i9,i10,tid)
-    tid = omp_get_thread_num();
-    if(tid == 0) {
-        nthreads = omp_get_num_threads();
-        printf("Number of threads = %d\n", nthreads);
-    }
+    /*
+        int tid, nthreads;
+    #pragma omp parallel shared(nthreads) private(i1,i2,i3,i4,i5,i6,i7,i8,i9,i10,tid)
+        tid = omp_get_thread_num();
+        if(tid == 0) {
+            nthreads = omp_get_num_threads();
+            printf("Number of threads = %d\n", nthreads);
+        }
 
-    printf("Thread %d starting...\n", tid);
-*/
+        printf("Thread %d starting...\n", tid);
+     */
 
-#pragma omp parallel for collapse(10)
+    //#pragma omp parallel for collapse(10)
     for(i1 = 0; i1 <= fci->numDivisions; i1++) {
         stats[1]->weight = i1 * fci->increment1;
         //CheckWeights(1) // if the sum of weights exceeds fci->weightSumHighCutoff, bail
@@ -367,7 +535,7 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
             stats[1]->weight = 100;
             CheckWeights(1)
             OptimizeWeights()
-            break;
+                    // break;
         }
         else {
             for(i2 = 0; i2 <= fci->numDivisions; i2++) {
@@ -469,7 +637,7 @@ int runOptimizerNested(forecastInputType *fci, int hoursAheadIndex, int hoursAft
         }
     }
 
-    
+
     fci->inPhase1 = False;
     //   fprintf(stderr, "Number of RMSE/cost calls = %d\n", numRuns);
 

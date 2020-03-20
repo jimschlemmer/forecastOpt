@@ -2,7 +2,7 @@
 CC      = gcc
 #CC     = cc 
 INC     = -I./../include # -I./include -I/usr/include
-CFLAGS = -O3 -march=nocona ${INC}
+CFLAGS = -O3 -march=nocona -fopenmp ${INC}
 #CFLAGS = -g -Wall ${INC}
 
 FORECASTLIB  = forecastLib.a

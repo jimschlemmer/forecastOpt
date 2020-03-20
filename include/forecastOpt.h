@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <omp.h>
 extern int errno;
 
 #include "gridDateTime.h"
@@ -64,7 +65,6 @@ extern "C" {
 
 #define USE_GROUND_REF 1
 #define USE_SATELLITE_REF 0
-#define MAX_METRIC_RUNS 5000
 
 //#define isContributingModel(model) (model.isActive && !model.isReference)
 
@@ -86,7 +86,6 @@ typedef enum {
 
 typedef struct {
     dateTimeType dateTime;
-    char isValid;
     double v3,
     v4,
     v3_v4,
@@ -117,6 +116,7 @@ typedef struct {
     total_loss,
     total_energy_v3_over, // is the total energy V3 obtained (generated) by the array including oversizing
     total_energy_v4; // is the same forecasted V4 quantity by without oversizing (woo)
+    int weights[10];
 } cost_type;
 
 typedef struct {
@@ -293,8 +293,9 @@ typedef struct {
     char filterOnSunUp;
     cost_timeseries_type *lowestCostTimeSeries;
     cost_type lowestCost;
-    int numMetricRuns;
-    modelRunType savedModelRuns[MAX_METRIC_RUNS];
+    int numGoodWeightSets;
+    cost_type **lowCostList;
+    int omp_num_threads;
 } forecastInputType;
 
 char *getModelName(forecastInputType *fci, int modelIndex);
@@ -306,11 +307,12 @@ int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex, int hoursAfte
 int computeHourlyCost(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 int computeModelRMSE(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int useGroundReference);
-int computeHourlyCostWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int useGroundReference, int doDump);
+void computeHourlyCostWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int useGroundReference, int doDump, int runIndex);
 int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex);
 void fatalError(char *functName, char *errStr, char *file, int linenumber);
 void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);
 int runOptimizerNested(forecastInputType *fci, int hourIndex, int hoursAfterSunriseIndex, int ktIndex);
+int runOptimizerParallel(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 char *getElapsedTime(time_t start_t);
 void printHoursAheadSummaryCsv(forecastInputType *fci);
 void dumpNumModelsReportingTable(forecastInputType *fci);

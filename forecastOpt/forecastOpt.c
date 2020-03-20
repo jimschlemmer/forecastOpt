@@ -61,7 +61,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     //static char tabDel[32];
     //sprintf(tabDel, "%c", 9);  // ascii 9 = TAB
 
-    while((c = getopt(argC, argV, "b:kpfa:c:dto:s:HhvSVr:w:i:BuK:C")) != EOF) {
+    while((c = getopt(argC, argV, "b:kpfa:c:do:s:HhvSVr:w:i:BuK:Ct:")) != EOF) {
         switch(c) {
             case 'd':
             {
@@ -105,7 +105,12 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
             }
             case 't':
             {
-                fci->delimiter = "\t";
+                fci->omp_num_threads = atoi(optarg);
+                if(fci->omp_num_threads > 64 || fci->omp_num_threads < 1) {
+                    fprintf(stderr, "Bad argument to -t : expecting number of CPUs/threads to use\n");
+                    return False;
+                }
+                omp_set_num_threads(fci->omp_num_threads);
                 break;
             }
 
@@ -221,7 +226,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
         For numDivisions = 10, increment1 = 100/10 = 10 => 10,20,30,40,50,60,70,80,90,100
      */
     fci->increment1 = 100 / fci->numDivisions; // numDivisions=10 => increment1=10, 5 => 20, 25 => 4
-    fci->numDivisions2 = -(fci->increment1)/2; // might be better off with -(numDivisions2/2)
+    fci->numDivisions2 = -(fci->increment1) / 2; // might be better off with -(numDivisions2/2)
     fci->increment2 = MAX(1, (fci->increment1 / fci->numDivisions)); // 2*20/5 = 8, 2*14/7 = 4, 2*10/10 = 2, 2*4/25 = 1
 
     fprintf(stderr, "\n======== Weight Search Settings =========\n");
@@ -240,7 +245,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
 void help(void)
 {
     version();
-    printf("usage: %s [-dsmpkSBfvh] [-r beginHourIndex,endHourIndex] [-a begin,end] [-w low,high] [-o outputDir] [-b divisions] forecastFile\n", Progname);
+    printf("usage: %s [-dsmpkSBfvh] [-r beginHourIndex,endHourIndex] [-a begin,end] [-w low,high] [-o outputDir] [-b divisions] [-t opm_num_threads] forecastFile\n", Progname);
     printf("where: -d = comma separated input [TAB]\n");
     printf("       -s maxHours = set max hours after sunrise\n");
     printf("       -p = skip phase 2 optimization\n");
@@ -253,6 +258,7 @@ void help(void)
     printf("       -b divisions = specify how many intervals the 0..100 weight range is divided into [def=7]\n");
     printf("       -B = run in kt bootstrap mode\n");
     printf("       -f = don't filter with satModel data\n");
+    printf("       -t opm_num_threads = set number of CPUs to use\n");
     printf("       -v = be verbose\n");
     printf("       -h = help\n");
     printf("       forecastFile = .csv forecast file\n");
@@ -342,7 +348,7 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
                     printHourlySummary(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
 
                     // This is the actual optimizer call
-                    numHASwithData += runOptimizerNested(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+                    numHASwithData += runOptimizerParallel(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
                     //fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
                 }
             }
@@ -371,7 +377,7 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
             //dumpNumModelsReportingTable(fci);
             printRmseTableHour(fci, hoursAheadIndex, -1, -1);
             printHourlySummary(fci, hoursAheadIndex, -1, -1);
-            if(runOptimizerNested(fci, hoursAheadIndex, -1, -1)) {
+            if(runOptimizerParallel(fci, hoursAheadIndex, -1, -1)) {
                 dumpHourlyOptimizedTS(fci, hoursAheadIndex);
                 //fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
                 dumpModelMixRMSE(fci, hoursAheadIndex);
