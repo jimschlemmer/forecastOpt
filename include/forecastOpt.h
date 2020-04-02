@@ -116,7 +116,8 @@ typedef struct {
     total_loss,
     total_energy_v3_over, // is the total energy V3 obtained (generated) by the array including oversizing
     total_energy_v4; // is the same forecasted V4 quantity by without oversizing (woo)
-    int weights[10];
+    int weights[MAX_MODELS];
+    cost_timeseries_type *lowestCostTimeSeries;
 } cost_type;
 
 typedef struct {
@@ -150,7 +151,6 @@ typedef struct {
     long phase1MetricCalls, phase2MetricCalls, phase1SumWeightsCalls, phase2SumWeightsCalls;
     double correctionVarA, correctionVarB;
 } modelRunType;
-
 
 typedef struct {
     float modelGHI[MAX_MODELS];
@@ -196,7 +196,7 @@ typedef struct {
     modelType modelInfo;
     int hoursAhead, hoursAheadIndex;
     timeSeriesType *timeSeries;
-    int numTimeSeriesSamples;
+//    int numTimeSeriesSamples;
     int numGood, numMissing;
     double percentMissing;
 } nwpTimeSeriesType;
@@ -291,10 +291,11 @@ typedef struct {
     char dumpFilterData;
     errorMetricType errorMetric;
     char filterOnSunUp;
-    cost_timeseries_type *lowestCostTimeSeries;
     cost_type lowestCost;
     int numGoodWeightSets;
     cost_type **lowCostList;
+    char saveLowCostTimeSeries;
+
     int omp_num_threads;
 } forecastInputType;
 
@@ -307,7 +308,7 @@ int computeHourlyRmseErrors(forecastInputType *fci, int hourIndex, int hoursAfte
 int computeHourlyCost(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 int computeModelRMSE(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 int computeHourlyRmseErrorWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int useGroundReference);
-void computeHourlyCostWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int useGroundReference, int doDump, int runIndex);
+void computeHourlyCostWeighted(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int useGroundReference, int runIndex);
 int dumpModelMixRMSE(forecastInputType *fci, int hoursAheadIndex);
 void fatalError(char *functName, char *errStr, char *file, int linenumber);
 void fatalErrorWithExitCode(char *functName, char *errStr, char *file, int linenumber, int exitCode);

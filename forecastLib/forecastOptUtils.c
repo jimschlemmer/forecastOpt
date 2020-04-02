@@ -1043,7 +1043,7 @@ void initForecastInfo(forecastInputType * fci)
     //fci->errorMetric = Cost;
     fci->errorMetric = RMSE;
     fci->filterOnSunUp = True;
-    fci->lowestCostTimeSeries = NULL;
+    fci->saveLowCostTimeSeries = True;
 }
 
 void incrementTimeSeries(forecastInputType * fci)

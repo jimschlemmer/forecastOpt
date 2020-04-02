@@ -10,12 +10,13 @@ void loadOptimizedModelWeights(forecastInputType *fci, int hoursAheadIndex, int 
 int sumWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int numModels);
 void dumpWeights(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunrise, int ktIndex, int phase);
 int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
-int runCostWithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump, int runIndex);
+int runCostWithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int runIndex);
 int weightsInRange(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
 int weightsRangeExceeded(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex);
-int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump, int runIndex);
+int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int runIndex);
 void cleanUpTimeSeries(forecastInputType *fci, int hourAheadIndex);
 int cmpcost(const void *p1, const void *p2);
+void dumpAndFree(forecastInputType *fci, modelRunType *modelRun, int numGoodWeightSets);
 
 time_t Start_t;
 double MinRmse;
@@ -115,7 +116,7 @@ char *getElapsedTime(time_t start_t)
     return (timeStr);
 }
 
-int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump, int runIndex)
+int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int runIndex)
 {
     int retVal;
 
@@ -124,7 +125,7 @@ int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadI
 
     }
     else if(fci->errorMetric == Cost) {
-        retVal = runCostWithWeights(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, doDump, runIndex);
+        retVal = runCostWithWeights(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, runIndex);
     }
 
     else {
@@ -135,7 +136,7 @@ int runWeightSet(forecastInputType *fci, modelRunType *modelRun, int hoursAheadI
     return retVal;
 }
 
-int runCostWithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int doDump, int runIndex)
+int runCostWithWeights(forecastInputType *fci, modelRunType *modelRun, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex, int runIndex)
 {
     //    int weightSum;
     double minCost;
@@ -172,14 +173,14 @@ int runCostWithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
 #ifdef WEIGHT_TRIALS    
     fprintf(stderr, " RUNNING\n");
 #endif        
-    computeHourlyCostWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, USE_GROUND_REF, doDump, runIndex);
+    computeHourlyCostWeighted(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, USE_GROUND_REF, runIndex);
 
     return True; // skip all the saving of parameters if we're running in parallel
 
 
-    
-    
-    
+
+
+
 
     //fprintf(stderr, "checking minCost...\n");
     double lowestCost = modelRun->weightedModelStatsVsGround.lowestCostParameters.total_cost;
@@ -272,7 +273,7 @@ int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
 #define CheckWeights(n) { sumWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, n); if(fci->weightSum > fci->weightSumHighCutoff) { stats[n]->weight = 0; break;} }
 
 //#define OptimizeWeights() { sumWeights(fci, n); if(fci->weightSum > fci->weightSumHighCutoff) break; if(fci->weightSum >= fci->weightSumLowCutoff) { /*runWeightSet(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);*/ } }
-#define OptimizeWeights() { if(fci->weightSum >= fci->weightSumLowCutoff) { runWeightSet(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 0, 0);} }
+#define OptimizeWeights() { if(fci->weightSum >= fci->weightSumLowCutoff) { runWeightSet(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 0);} }
 //#define OptimizeWeights() { if(fci->weightSum >= fci->weightSumLowCutoff) { numRuns++;} }
 
 
@@ -283,7 +284,7 @@ int runRMSEwithWeights(forecastInputType *fci, modelRunType *modelRun, int hours
 int runOptimizerParallel(forecastInputType *fci, int hoursAheadIndex, int hoursAfterSunriseIndex, int ktIndex)
 {
     int modelIndex, numActiveModels = 0;
-    int i, i1, i2, i3, i4, i5, i6;
+    int i, i1, i2, i3, i4, i5, i6, j;
     modelStatsType * stats[MAX_MODELS + 1]; //*stats[1], *stats[2], ...
     modelRunType *modelRun;
 
@@ -293,13 +294,7 @@ int runOptimizerParallel(forecastInputType *fci, int hoursAheadIndex, int hoursA
 
     fprintf(stderr, "Max num threads = %d\n", omp_get_max_threads());
     fprintf(stderr, "Num processors  = %d\n", omp_get_num_procs());
-    // intialize things
-    // clearHourlyErrorFields(fci, hoursAheadIndex);   no,no
 
-    //    if(!filterForecastData(fci, hoursAheadIndex, hoursAfterSunriseIndex))
-    //        return False;
-
-    //int hoursAhead = fci->hoursAheadGroup[hoursAheadIndex].hoursAhead;
     for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
         //modelData->hourlyModelStats[modelIndex].isActive = (getMaxHoursAhead(fci, modelIndex) >= hoursAhead);
         if(modelRun->hourlyModelStats[modelIndex].maskSwitchOn) {
@@ -328,23 +323,10 @@ int runOptimizerParallel(forecastInputType *fci, int hoursAheadIndex, int hoursA
         return True;
 
     Start_t = time(NULL);
-    //    int numRuns = 0;
-
-    /*
-        int tid, nthreads;
-    #pragma omp parallel shared(nthreads) private(i1,i2,i3,i4,i5,i6,i7,i8,i9,i10,tid)
-        tid = omp_get_thread_num();
-        if(tid == 0) {
-            nthreads = omp_get_num_threads();
-            printf("Number of threads = %d\n", nthreads);
-        }
-
-        printf("Thread %d starting...\n", tid);
-     */
 
     // allocate list for lowCost list that all threads report their results to
-#define MAX_WEIGHT_SETS 15000
-    fci->lowCostList = (cost_type **) malloc(MAX_WEIGHT_SETS * sizeof (cost_type *));
+    int numAllocatedWeightSets = 2000;
+    fci->lowCostList = (cost_type **) malloc(numAllocatedWeightSets * sizeof (cost_type *));
 
     // this is all pretty hard-coded right now
     int inc = fci->increment1;
@@ -365,6 +347,11 @@ int runOptimizerParallel(forecastInputType *fci, int hoursAheadIndex, int hoursA
                                 fci->lowCostList[numGoodWeightSets]->weights[4] = i5*inc;
                                 fci->lowCostList[numGoodWeightSets]->weights[5] = i6*inc;
                                 numGoodWeightSets++;
+                                if(numGoodWeightSets == numAllocatedWeightSets) {
+                                    numAllocatedWeightSets *= 2;
+                                    fprintf(stderr, "=== Scaling up weightset memory to %d sets ===\n", numAllocatedWeightSets);
+                                    fci->lowCostList = (cost_type **) realloc(fci->lowCostList, numAllocatedWeightSets * sizeof (cost_type *));
+                                }
                             }
                         }
                     }
@@ -373,64 +360,205 @@ int runOptimizerParallel(forecastInputType *fci, int hoursAheadIndex, int hoursA
         } // a
     } // lot
 
-    fprintf(stderr, "Got %d good weight sets\n", numGoodWeightSets);
+    fprintf(stderr, "Got %d good weight sets : %d allocated\n", numGoodWeightSets, numAllocatedWeightSets);
 
     cleanUpTimeSeries(fci, hoursAheadIndex);
 
     ///////// Main Loop ////////////////
+
 #pragma omp parallel for schedule(static)
     for(i = 0; i < numGoodWeightSets; i++) {
-        runWeightSet(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 0, i);
+        runWeightSet(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, i);
     }
+
+    fprintf(stderr, "\n=== Total elapsed time in phase 1 : %ld seconds\n", time(NULL) - Start_t);
+
     ////////////////////////////////////
 
+    // sort results -- lowest cost will be first
     qsort(fci->lowCostList, numGoodWeightSets, sizeof (cost_type *), cmpcost);
 
-    /// dump sorted cost data
-    fprintf(stderr, "#modelWeights,total_cost,max_rate,oversize,max_battery_size,storage_size,total_recharge,total_recharge_cost,min_peak_to_trough_v4,total_curtailment,total_loss,total_energy_v3_over,total_energy_v4\n");
+    // copy out the top 10 so we can reuse the fci->lowCostList
+    cost_type lowCostPhase1[10];
+    for(i = 0; i < 10; i++) {
+        for(j = 0; j < fci->numModels; j++)
+            lowCostPhase1[i].weights[j] = fci->lowCostList[i]->weights[j];
+    }
+    
+    dumpAndFree(fci, modelRun, numGoodWeightSets);
+
+    /////////////////////////////////////  phase 2
+    fci->inPhase1 = False;
+
+    int numLowMetrics = 1; // how many of the lowest cost weight sets should we optimize over?
+    // 8 -> 4 -> [-4, -3, -2, -1, 0 , 1, 2, 3, 4]
+    fci->increment2 = inc = 1;
+    int step = fci->increment1 / 2;
+    numGoodWeightSets = 0;
+    numAllocatedWeightSets = 2000;
+    fci->lowCostList = (cost_type **) malloc(numAllocatedWeightSets * sizeof (cost_type *));
+
+    char skipZeroWeights = 1;
+    int wt1, wt2, wt3, wt4, wt5, wt6;
+
+    for(i = 0; i < numLowMetrics; i++) {
+        int lowWt1 = lowCostPhase1[i].weights[0];
+        int lowWt2 = lowCostPhase1[i].weights[1];
+        int lowWt3 = lowCostPhase1[i].weights[2];
+        int lowWt4 = lowCostPhase1[i].weights[3];
+        int lowWt5 = lowCostPhase1[i].weights[4];
+        int lowWt6 = lowCostPhase1[i].weights[5];
+        for(i1 = -step; i1 <= step; i1++) {
+            if(lowWt1 == 0 && skipZeroWeights) {
+                wt1 = 0;
+                i1 = step;
+            }
+            else wt1 = lowWt1 + i1;
+            if(wt1 < 0) continue;
+            for(i2 = -step; i2 <= step; i2++) {
+                if(lowWt2 == 0 && skipZeroWeights) {
+                    wt2 = 0;
+                    i2 = step;
+                }
+                else wt2 = lowWt2 + i2;
+                if(wt2 < 0) continue;
+                for(i3 = -step; i3 <= step; i3++) {
+                    if(lowWt3 == 0 && skipZeroWeights) {
+                        wt3 = 0;
+                        i3 = step;
+                    }
+                    else wt3 = lowWt3 + i3;
+                    if(wt3 < 0) continue;
+                    for(i4 = -step; i4 <= step; i4++) {
+                        if(lowWt4 == 0 && skipZeroWeights) {
+                            wt4 = 0;
+                            i4 = step;
+                        }
+                        else wt4 = lowWt4 + i4;
+                        if(wt4 < 0) continue;
+                        for(i5 = -step; i5 <= step; i5++) {
+                            if(lowWt5 == 0 && skipZeroWeights) {
+                                wt5 = 0;
+                                i5 = step;
+                            }
+                            else wt5 = lowWt5 + i5;
+                            if(wt5 < 0) continue;
+                            for(i6 = -step; i6 <= step; i6++) {
+                                if(lowWt6 == 0 && skipZeroWeights) {
+                                    wt6 = 0;
+                                    i6 = step;
+                                }
+                                else wt6 = lowWt6 + i6;
+                                if(wt6 < 0) continue;
+                                int sum = wt1 + wt2 + wt3 + wt4 + wt5 + wt6;
+                                if(sum >= fci->weightSumLowCutoff && sum <= fci->weightSumHighCutoff) {
+                                    //fprintf(stderr, "%d|%d %d|%d %d|%d %d|%d %d|%d %d|%d sum = %d\n", lowWt1, wt1, lowWt2, wt2, lowWt3, wt3, lowWt4, wt4, lowWt5, wt5, lowWt6, wt6, sum);
+                                    fci->lowCostList[numGoodWeightSets] = (cost_type *) malloc(sizeof (cost_type));
+                                    fci->lowCostList[numGoodWeightSets]->weights[0] = wt1;
+                                    fci->lowCostList[numGoodWeightSets]->weights[1] = wt2;
+                                    fci->lowCostList[numGoodWeightSets]->weights[2] = wt3;
+                                    fci->lowCostList[numGoodWeightSets]->weights[3] = wt4;
+                                    fci->lowCostList[numGoodWeightSets]->weights[4] = wt5;
+                                    fci->lowCostList[numGoodWeightSets]->weights[5] = wt6;
+                                    numGoodWeightSets++;
+                                    if(numGoodWeightSets == numAllocatedWeightSets) {
+                                        numAllocatedWeightSets *= 2;
+                                        fprintf(stderr, "=== Scaling up weightset memory to %d sets ===\n", numAllocatedWeightSets);
+                                        fci->lowCostList = (cost_type **) realloc(fci->lowCostList, numAllocatedWeightSets * sizeof (cost_type *));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } // that's 
+            } // a
+        } // lot
+    }
+
     for(i = 0; i < numGoodWeightSets; i++) {
         int sum = 0;
-        for(modelIndex = 0; modelIndex < numActiveModels; modelIndex++) {
-            fprintf(stderr, "%s=%2d ", getModelName(fci, modelIndex), fci->lowCostList[i]->weights[modelIndex]);
-            sum += fci->lowCostList[i]->weights[modelIndex];
+        for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+            if(modelRun->hourlyModelStats[modelIndex].maskSwitchOn) {
+                fprintf(stderr, "%s=%2d ", getModelName(fci, modelIndex), fci->lowCostList[i]->weights[modelIndex]);
+                sum += fci->lowCostList[i]->weights[modelIndex];
+            }
         }
-        fprintf(stderr, "sum=%d,", sum);
-
-        cost_type *c = fci->lowCostList[i];
-        fprintf(stderr, "%.1f,%.02f,%.02f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f\n",
-                c->total_cost, c->max_rate, c->oversize, c->max_battery_size, c->storage_size, c->total_recharge, c->total_recharge_cost, c->min_peak_to_trough_v4, c->total_curtailment, c->total_loss, c->total_energy_v3_over, c->total_energy_v4);
+        fprintf(stderr, "sum=%d\n", sum);
     }
 
-    // compositeGHI += (thisSample->forecastData[hoursAheadIndex].modelGHI[modelIndex] * ((float) modelWeights[modelIndex])/100);
-/*
-    for(modelIndex = 0; modelIndex < numActiveModels; modelIndex++) {
-        fprintf(stderr, "%s=%2d ", getModelName(fci, modelIndex), goodSums[lowCostInd][modelIndex]);
+    fprintf(stderr, "numGoodWeightSets = %d\n", numGoodWeightSets);
+
+#pragma omp parallel for schedule(static)
+    for(i = 0; i < numGoodWeightSets; i++) {
+        runWeightSet(fci, modelRun, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, i);
     }
-    fprintf(stderr, "\n");
-*/
-    fprintf(stderr, "\n=== Total Elapsed time : %ld seconds\n", time(NULL) - Start_t);
 
-    exit(0);
-
-    fci->inPhase1 = False;
-    //   fprintf(stderr, "Number of RMSE/cost calls = %d\n", numRuns);
-
-#ifdef NESTED_OPT_DEBUG
-    char *metric = fci->errorMetric == RMSE ? "RMSE" : "Cost";
-    double minMetric = fci->errorMetric == RMSE ? modelRun->optimizedPctMetricPhase1 * 100 : modelRun->optimizedPctMetricPhase1;
-    fprintf(stderr, "\n=== Elapsed time for phase 1: %s [%s calls = %ld] [%s = %.2f%%]\n", getElapsedTime(Start_t), metric, modelRun->phase1MetricCalls, metric, minMetric);
-#endif    
-    dumpWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 1);
-
-
-#ifdef NESTED_OPT_DEBUG
-    metric = fci->errorMetric == RMSE ? "RMSE" : "Cost";
-    minMetric = fci->errorMetric == RMSE ? modelRun->optimizedPctMetricPhase2 * 100 : modelRun->optimizedPctMetricPhase2;
-    fprintf(stderr, "\n=== Elapsed time for phase 2: %s [%s calls = %ld] [%s = %.2f%%]\n", getElapsedTime(Start_t), metric, modelRun->phase2MetricCalls, metric, minMetric);
-#endif    
-    dumpWeights(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex, 2);
+    // sort results -- lowest cost will be first
+    qsort(fci->lowCostList, numGoodWeightSets, sizeof (cost_type *), cmpcost);
+    dumpAndFree(fci, modelRun, numGoodWeightSets);
 
     return True;
+}
+
+void dumpAndFree(forecastInputType *fci, modelRunType *modelRun, int numGoodWeightSets)
+{
+    int i, modelIndex;
+    char outputFile[2024];
+    FILE *outputFP;
+    static int phase = 1;
+
+    // dump cost data to file
+    sprintf(outputFile, "%s/lowestCostData.%dcores.HA%d.percentInc_%d.phase%d.csv", fci->outputDirectory, 
+            fci->omp_num_threads, modelRun->hoursAhead, fci->increment1, phase);
+    if((outputFP = fopen(outputFile, "w")) == NULL) {
+        fprintf(stderr, "Couldn't open weights file %s\n", outputFile);
+        exit(1);
+    }
+
+    fprintf(outputFP, "#modelWeights,total_cost,max_rate,oversize,max_battery_size,storage_size,total_recharge,total_recharge_cost,min_peak_to_trough_v4,total_curtailment,total_loss,total_energy_v3_over,total_energy_v4\n");
+    for(i = 0; i < numGoodWeightSets; i++) {
+        int sum = 0;
+        for(modelIndex = 0; modelIndex < fci->numModels; modelIndex++) {
+            if(modelRun->hourlyModelStats[modelIndex].maskSwitchOn) {
+
+                fprintf(outputFP, "%s=%2d ", getModelName(fci, modelIndex), fci->lowCostList[i]->weights[modelIndex]);
+                sum += fci->lowCostList[i]->weights[modelIndex];
+            }
+        }
+        fprintf(outputFP, "sum=%d,", sum);
+
+        cost_type *c = fci->lowCostList[i];
+        fprintf(outputFP, "%.1f,%.02f,%.02f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f\n",
+                c->total_cost, c->max_rate, c->oversize, c->max_battery_size, c->storage_size, c->total_recharge, c->total_recharge_cost, c->min_peak_to_trough_v4, c->total_curtailment, c->total_loss, c->total_energy_v3_over, c->total_energy_v4);
+    }
+    fclose(outputFP);
+
+    // optionally dump lowest cost time-series
+    if(fci->saveLowCostTimeSeries) {
+        cost_type *lowestCostData = fci->lowCostList[0];
+        cost_timeseries_type *ts_data = lowestCostData->lowestCostTimeSeries;
+
+        sprintf(outputFile, "%s/lowestCostTS.Rate_%.1f.Ovrsz_%.2f.Bat_%.0f.%dcores.HA%d.percentInc_%d.phase%d.csv", fci->outputDirectory,
+                lowestCostData->max_rate, lowestCostData->oversize, lowestCostData->max_battery_size, fci->omp_num_threads, modelRun->hoursAhead, fci->increment1, phase);
+        if((outputFP = fopen(outputFile, "w")) == NULL) {
+            fprintf(stderr, "Couldn't open T/S file %s\n", outputFile);
+            exit(1);
+        }
+        fprintf(outputFP, "#Max_Rate=%.1f,Oversize=%.2f,Max_Battery_Size=%.1f\n", lowestCostData->max_rate, lowestCostData->oversize, lowestCostData->max_battery_size);
+        fprintf(outputFP, "year,mon,day,hour,min,v3,v4,v3over,v3_v4,recharge_v3_v4,c_v3_v4,peak_v4,trough_v4,peak_to_trough_v4,storage_size,total_recharge,total_v3,total_v4,state_of_charge,curtailment\n");
+        for(i = 1; i < fci->numTotalSamples; i++) {
+            fprintf(outputFP, "%s,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.2f,%.1f\n",
+                    dtToStringCsvCompact(&ts_data[i].dateTime), ts_data[i].v3, ts_data[i].v4, ts_data[i].v3 * lowestCostData->oversize, ts_data[i].v3_v4, ts_data[i].recharge_v3_v4, ts_data[i].c_v3_v4, ts_data[i].peak_v4, ts_data[i].trough_v4,
+                    ts_data[i].peak_to_trough_v4, ts_data[i].storage_size, ts_data[i].total_recharge, ts_data[i].total_energy_v3_over, ts_data[i].total_energy_v4, ts_data[i].state_of_charge, ts_data[i].curtailment_v4);
+        } //ts_data[i].v3 = ts_data[i].v3 / Oversize; // scale back
+    }
+    fclose(outputFP);
+
+    for(i = 0; i < numGoodWeightSets; i++)
+        free(fci->lowCostList[i]);
+
+    free(fci->lowCostList);
+    phase++;
 }
 
 int cmpcost(const void *p1, const void *p2)
