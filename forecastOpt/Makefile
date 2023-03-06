@@ -7,8 +7,8 @@ FORECASTLIB = ${LIBDIR}/forecastLib.a
 INC	= -I./${INCLUDEDIR} # -I./include -I/usr/include 
 
 #CC	= cc 
-CFLAGS = -O3 -march=nocona -fopenmp ${INC} 
-#CFLAGS = -g -Wall -fopenmp ${INC} 
+#CFLAGS = -O3 -march=nocona -fopenmp ${INC} 
+CFLAGS = -g -Wall -fopenmp ${INC} 
 LIBS	= -lm
 OBJS	= forecastOpt.o optimizer.o costForecast.o
 

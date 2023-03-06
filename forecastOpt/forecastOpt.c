@@ -57,11 +57,12 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     int parseDates(forecastInputType *fci, char *optarg);
 
     fci->doKtNWP = True;
+    omp_set_num_threads(1);
 
     //static char tabDel[32];
     //sprintf(tabDel, "%c", 9);  // ascii 9 = TAB
 
-    while((c = getopt(argC, argV, "b:kpfa:c:do:s:HhvSVr:w:i:BuK:Ct:")) != EOF) {
+    while((c = getopt(argC, argV, "b:kpfa:do:s:HhvSVr:w:i:BuK:Ct:gD:m:")) != EOF) {
         switch(c) {
             case 'd':
             {
@@ -86,11 +87,6 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                 fci->outputDirectory = strdup(optarg);
                 break;
             }
-            case 'c':
-            {
-                fci->configFile.fileName = strdup(optarg);
-                break;
-            }
             case 's':
             {
                 fci->maxHoursAfterSunrise = atoi(optarg);
@@ -99,8 +95,10 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                     return False;
                 }
                 fci->runHoursAfterSunrise = True;
-                fci->startHourHighIndex = fci->maxHoursAfterSunrise;
-                fci->startHourLowIndex = 0;
+                /*
+                                fci->startHourHighIndex = fci->maxHoursAfterSunrise;
+                                fci->startHourLowIndex = 0;
+                 */
                 break;
             }
             case 't':
@@ -194,6 +192,36 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
                 fci->errorMetric = Cost;
                 break;
             }
+            case 'g':
+            {
+                fci->useV4fromFile = True;
+                fci->groundGHICol = 6;
+                fci->satGHICol = 5;
+                break;
+            }
+            case 'D':
+            {
+                fci->disabledModels = strdup(optarg);
+                break;
+            }
+            case 'm':
+                if(strcmp(optarg, "RMSE") == 0 || strcmp(optarg, "rmse") == 0) {
+                    fci->errorMetric = RMSE;
+                    fci->errorMetricName = "RMSEpct";
+                }
+                else if(strcmp(optarg, "MAE") == 0 || strcmp(optarg, "mae") == 0) {
+                    fci->errorMetric = MAE;
+                    fci->errorMetricName = "MAEpct";
+                }
+                else if(strcmp(optarg, "MBE") == 0 || strcmp(optarg, "mbe") == 0) {
+                    fci->errorMetric = MBE;
+                    fci->errorMetricName = "MBEpct";
+                }
+                else {
+                    fprintf(stderr, "Got bad arg to -m flag : %s\n", optarg);
+                    return False;
+                }
+                break;
 
             default: return False;
         }
@@ -226,7 +254,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
         For numDivisions = 10, increment1 = 100/10 = 10 => 10,20,30,40,50,60,70,80,90,100
      */
     fci->increment1 = 100 / fci->numDivisions; // numDivisions=10 => increment1=10, 5 => 20, 25 => 4
-    fci->numDivisions2 = -(fci->increment1) / 2; // might be better off with -(numDivisions2/2)
+    fci->numDivisions2 = (fci->increment1) / 2; // might be better off with -(numDivisions2/2)
     fci->increment2 = MAX(1, (fci->increment1 / fci->numDivisions)); // 2*20/5 = 8, 2*14/7 = 4, 2*10/10 = 2, 2*4/25 = 1
 
     fprintf(stderr, "\n======== Weight Search Settings =========\n");
@@ -238,6 +266,7 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
     }
     fprintf(stderr, "===========================================\n");
 
+    sprintf(fci->parameterStamp, "wtSum_%d-%d.step_%d", fci->weightSumLowCutoff, fci->weightSumHighCutoff, fci->increment1);
 
     return True;
 }
@@ -245,13 +274,14 @@ int parseArgs(forecastInputType *fci, int argC, char **argV)
 void help(void)
 {
     version();
-    printf("usage: %s [-dsmpkSBfvh] [-r beginHourIndex,endHourIndex] [-a begin,end] [-w low,high] [-o outputDir] [-b divisions] [-t opm_num_threads] forecastFile\n", Progname);
+    printf("usage: %s [-dsmpkSBfvh] [-r beginHourIndex,endHourIndex] [-m errorMetric] [-a begin,end] [-w low,high] [-o outputDir] [-b divisions] [-t opm_num_threads] forecastFile\n", Progname);
     printf("where: -d = comma separated input [TAB]\n");
     printf("       -s maxHours = set max hours after sunrise\n");
     printf("       -p = skip phase 2 optimization\n");
     printf("       -k = don't do kt binning\n");
     printf("       -S = use satellite model data as reference\n");
     printf("       -r beginHourIndex,endHourIndex = specify which hour ahead indexes to start and end with\n");
+    printf("       -m errorMetric = one of RMSE, MAE, MBE [RMSE]\n");
     printf("       -a begin,end = specify begin and end dates in YYYYMMDD,YYYYMMDD format\n");
     printf("       -w low,high = specify low and high weight sum cutoffs [92,108]\n");
     printf("       -o outputDir = specify where output files go\n");
@@ -279,10 +309,13 @@ void processForecast(forecastInputType *fci)
     fprintf(stderr, "=== Starting processing at %s\n", timeOfDayStr());
     fprintf(stderr, "=== Using date range: %s to ", dtToStringDateTime(&fci->startDate));
     fprintf(stderr, "%s\n", dtToStringDateTime(&fci->endDate));
+    fprintf(stderr, "=== Using metric %s\n", fci->errorMetricName);
     fprintf(stderr, "=== Weight sum range: %d to %d\n", fci->weightSumLowCutoff, fci->weightSumHighCutoff);
 
-    if(fci->errorMetric == RMSE)
-        readForecastDataNoNight(fci); // this reads in all the forecast data (either single site or composite) for all forecast horizons
+    if(fci->errorMetric != Cost) {
+        if(!readForecastDataNoNight(fci)) // this reads in all the forecast data (either single site or composite) for all forecast horizons
+            return;
+    }
     else
         readForecastData(fci);
 
@@ -342,9 +375,9 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
                             fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAfterSunrise,
                             ktIndex,
                             permutationIndex);
-                    computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+                    filterDataAndComputeErrors(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
                     //dumpNumModelsReportingTable(fci);
-                    printRmseTableHour(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+                    printHourlyErrorTable(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
                     printHourlySummary(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
 
                     // This is the actual optimizer call
@@ -355,7 +388,7 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
             if(numHASwithData) {
                 computeOptimizedGHI(fci, hoursAheadIndex);
                 dumpHourlyOptimizedTS(fci, hoursAheadIndex);
-                dumpModelMixRMSE(fci, hoursAheadIndex);
+                dumpModelMix(fci, hoursAheadIndex);
             }
         }
         dumpHoursAfterSunrise(fci);
@@ -373,14 +406,15 @@ void runErrorAnalysis(forecastInputType *fci, int permutationIndex)
         for(hoursAheadIndex = fci->startHourLowIndex; hoursAheadIndex <= fci->startHourHighIndex; hoursAheadIndex++) {
             fprintf(stderr, "\n############ Running for hour ahead %d\n\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
             setModelSwitches(fci, hoursAheadIndex, -1, -1, permutationIndex);
-            computeModelRMSE(fci, hoursAheadIndex, -1, -1);
+            filterDataAndComputeErrors(fci, hoursAheadIndex, -1, -1);
             //dumpNumModelsReportingTable(fci);
-            printRmseTableHour(fci, hoursAheadIndex, -1, -1);
+            printHourlyErrorTable(fci, hoursAheadIndex, -1, -1);
             printHourlySummary(fci, hoursAheadIndex, -1, -1);
-            if(runOptimizerParallel(fci, hoursAheadIndex, -1, -1)) {
+            if(runOptimizerParallelCost(fci, hoursAheadIndex, -1, -1)) {
+                computeOptimizedGHI(fci, hoursAheadIndex);
                 dumpHourlyOptimizedTS(fci, hoursAheadIndex);
                 //fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
-                dumpModelMixRMSE(fci, hoursAheadIndex);
+                dumpModelMix(fci, hoursAheadIndex);
             }
         }
         //printHoursAheadSummaryCsv(fci);
@@ -420,9 +454,9 @@ void runErrorAnalysisBootstrap(forecastInputType *fci, int permutationIndex)
                     fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAhead,
                     fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAfterSunrise,
                     permutationIndex);
-            computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+            filterDataAndComputeErrors(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
             //dumpNumModelsReportingTable(fci);
-            printRmseTableHour(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+            printHourlyErrorTable(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
             printHourlySummary(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
 
             // This is the actual optimizer call
@@ -432,7 +466,7 @@ void runErrorAnalysisBootstrap(forecastInputType *fci, int permutationIndex)
         }
         if(numHASwithData) {
             dumpHourlyOptimizedTS(fci, hoursAheadIndex); // this is where the kt get computed
-            dumpModelMixRMSE(fci, hoursAheadIndex);
+            dumpModelMix(fci, hoursAheadIndex);
         }
 
          */
@@ -455,13 +489,13 @@ void runErrorAnalysisBootstrap(forecastInputType *fci, int permutationIndex)
                         fci->hoursAfterSunriseGroup[hoursAheadIndex][hoursAfterSunriseIndex][ktIndex].hoursAfterSunrise,
                         ktIndex,
                         permutationIndex);
-                computeModelRMSE(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+                filterDataAndComputeErrors(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
                 //dumpNumModelsReportingTable(fci);
-                printRmseTableHour(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+                printHourlyErrorTable(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
                 printHourlySummary(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
 
                 // This is the actual optimizer call
-                numHASwithData += runOptimizerNested(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
+                numHASwithData += runOptimizerParallel(fci, hoursAheadIndex, hoursAfterSunriseIndex, ktIndex);
 
                 //fprintf(stderr, "\n############ End hour ahead %d\n", fci->hoursAheadGroup[hoursAheadIndex].hoursAhead);
             }
@@ -469,7 +503,7 @@ void runErrorAnalysisBootstrap(forecastInputType *fci, int permutationIndex)
         if(numHASwithData) {
             computeOptimizedGHI(fci, hoursAheadIndex);
             dumpHourlyOptimizedTS(fci, hoursAheadIndex); // this is where the kt get computed
-            dumpModelMixRMSE(fci, hoursAheadIndex);
+            dumpModelMix(fci, hoursAheadIndex);
         }
     }
     dumpHoursAfterSunrise(fci);

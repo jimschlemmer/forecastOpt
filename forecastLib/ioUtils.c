@@ -222,6 +222,10 @@ int isInDateRange(char *fileName, dateTimeType *start, dateTimeType *end)
 
     strcpy(temp, fileName);
     numFields = split(temp, fields, 64, ".");  /* split line */
+    if(!numFields) {
+        fprintf(stderr, "isInDateRange(): got bad fileName: %s\n", fileName);
+        return(False);
+    }
     sscanf(fields[1], "%04d%02d%02d", &dt.year, &dt.month, &dt.day);
     sscanf(fields[2], "%02d%02d", &dt.hour, &dt.min);
 
